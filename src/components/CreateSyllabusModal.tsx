@@ -24,9 +24,7 @@ export const CreateSyllabusModal = ({ isOpen, onClose, onCreateSyllabus }: Creat
     try {
       setUploading(true);
 
-      const syllabus = await apiClient.createSyllabus({
-        name: name
-      });
+      const syllabus = await apiClient.createSyllabus(name);
 
       toast({
         title: "Class Created",

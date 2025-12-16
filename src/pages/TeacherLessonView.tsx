@@ -30,5 +30,5 @@ export default function TeacherLessonView() {
         ? `/app/teacher/syllabus/${syllabusId}?step=${step}`
         : `/app/teacher/syllabus/${syllabusId}`
 
-    return <SyllabusDetail backUrlOverride={backUrl} />
+    return <SyllabusDetail backUrlOverride={backUrl} isCreatorMode={true} />
 }

@@ -154,7 +154,7 @@ export default function TeacherSyllabusManagement() {
     refetchChapters,
     updateTopicDetails,
     handleProcessPdf,
-  } = useSyllabusManagement(syllabusId)
+  } = useSyllabusManagement(syllabusId, syllabus?.name)
 
   // Filter out placeholder documents
   console.log("📄 Raw documents from hook:", documents);
@@ -174,11 +174,14 @@ export default function TeacherSyllabusManagement() {
 
   // Initialize step from URL or Syllabus data
   useEffect(() => {
-    if (syllabus?.current_step) {
+    const stepParam = searchParams.get("step");
+    if (stepParam) {
+      setCurrentStepState(parseInt(stepParam));
+    } else if (syllabus?.current_step) {
       // Use syllabus step but respect URL overrides if we want better deep linking later
       setCurrentStepState(syllabus.current_step);
     }
-  }, [syllabus]);
+  }, [syllabus, searchParams]);
 
 
   // Wrapper to sync URL and Backend
@@ -197,11 +200,13 @@ export default function TeacherSyllabusManagement() {
 
   // Auto-advance logic
   useEffect(() => {
-    if (currentStep === 1 && hasGeneratedContent && !isGenerating && !loadingChapters) {
+    // Only auto-advance if we have generated content AND we have documents uploaded.
+    // This prevents skipping the upload step when hardcoded topics are present.
+    if (currentStep === 1 && hasGeneratedContent && !isGenerating && !loadingChapters && hasDocuments) {
       console.log("🚀 Generation finished! Auto-advancing to Review Structure (Step 2)");
       setCurrentStep(2);
     }
-  }, [currentStep, hasGeneratedContent, isGenerating, loadingChapters]);
+  }, [currentStep, hasGeneratedContent, isGenerating, loadingChapters, hasDocuments]);
 
   // Auto-trigger Chapter Generation
   useEffect(() => {
@@ -317,6 +322,31 @@ export default function TeacherSyllabusManagement() {
         next.delete(`quiz-${subchapterId}`);
         return next;
       });
+    }
+  };
+
+  // Handler for Adding Topic (Manual)
+  const handleAddTopic = async () => {
+    try {
+      if (!syllabusId) return;
+      const title = `New Topic ${chapters.length + 1}`;
+      await apiClient.createChapter(syllabusId, { title });
+      await refetchChapters();
+      toast({ title: "Topic added successfully" });
+    } catch (e) {
+      toast({ title: "Failed to add topic", variant: "destructive" });
+    }
+  };
+
+  // Handler for Adding Subchapter (Manual)
+  const handleAddSubchapter = async (topicId: string) => {
+    try {
+      const title = "New Lesson";
+      await apiClient.createSubchapter(topicId, { title });
+      await refetchChapters();
+      toast({ title: "Lesson added successfully" });
+    } catch (e) {
+      toast({ title: "Failed to add lesson", variant: "destructive" });
     }
   };
 
@@ -565,6 +595,8 @@ export default function TeacherSyllabusManagement() {
                     }
                   }}
                   onDeleteSubchapter={deleteSubchapter}
+                  onAddTopic={handleAddTopic}
+                  onAddSubchapter={handleAddSubchapter}
                 />
               </div>
             )}
@@ -605,6 +637,8 @@ export default function TeacherSyllabusManagement() {
                   onOpenBlog={(subId) => navigate(`/app/teacher/syllabus/${syllabusId}/lesson/${subId}?returnTo=wizard&step=${currentStep}`)}
                   onOpenQuiz={(subId) => navigate(`/app/teacher/syllabus/${syllabusId}/lesson/${subId}?tab=quiz&returnTo=wizard&step=${currentStep}`)}
                   generatingSubchapterIds={generatingSubchapterIds}
+                  onAddTopic={handleAddTopic}
+                  onAddSubchapter={handleAddSubchapter}
                 />
               </div>
             )}

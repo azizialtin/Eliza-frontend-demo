@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiClient, User, setAuthToken, getAuthToken } from '@/lib/api';
+import { apiClient, User, setAuthToken, getAuthToken, setStoredUser } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -28,6 +28,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn("Token expired, clearing session");
             setAuthToken(null);
             setUser(null);
+            setStoredUser(null);
             setLoading(false);
             return;
           }
@@ -35,19 +36,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Invalid token format", e);
           setAuthToken(null);
           setUser(null);
+          setStoredUser(null);
           setLoading(false);
           return;
         }
 
         try {
-          const currentUser = await apiClient.getCurrentUser();
+          const currentUser = apiClient.getCurrentUser();
           setUser(currentUser);
+          // User is already stored in localStorage by getCurrentUser(), but ensure it's set
+          if (currentUser) {
+            setStoredUser(currentUser);
+          }
         } catch (error) {
           console.warn('Failed to fetch user, checks failed:', error);
           // If 401, we should clear. `apiClient` throws "API Error: Unauthorized"
           if (error instanceof Error && (error.message.includes("Unauthorized") || error.message.includes("401"))) {
             setAuthToken(null);
             setUser(null);
+            setStoredUser(null);
           } else {
             // Fallback decode if it was just a network error? No, if API fails we shouldn't trust the session fully?
             // Actually, if network error (offline), we might want to persist user.
@@ -74,15 +81,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAuthToken(response.access_token);
     if (response.user) {
       setUser(response.user);
+      setStoredUser(response.user);
     } else {
       // Try to fetch user separately if not in login response
       try {
-        const currentUser = await apiClient.getCurrentUser();
+        const currentUser = apiClient.getCurrentUser();
         setUser(currentUser);
+        setStoredUser(currentUser);
       } catch (error) {
         console.error('Failed to fetch user after login:', error);
         // Set a minimal user object from token if possible
         setUser(null);
+        setStoredUser(null);
       }
     }
   };
@@ -96,6 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setAuthToken(null);
     setUser(null);
+    setStoredUser(null);
   };
 
   const value = {

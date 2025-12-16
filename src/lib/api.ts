@@ -24,6 +24,26 @@ export const setAuthToken = (token: string | null) => {
 
 export const getAuthToken = () => localStorage.getItem("access_token")
 
+// User management in localStorage
+export const setStoredUser = (user: User | null) => {
+  if (user) {
+    localStorage.setItem("user", JSON.stringify(user))
+  } else {
+    localStorage.removeItem("user")
+  }
+}
+
+export const getStoredUser = (): User | null => {
+  const stored = localStorage.getItem("user")
+  if (!stored) return null
+  try {
+    return JSON.parse(stored)
+  } catch (e) {
+    console.error("Failed to parse stored user", e)
+    return null
+  }
+}
+
 // Helper to decode JWT and extract user info
 const decodeJWT = (token: string): Partial<User> | null => {
   try {
@@ -36,11 +56,14 @@ const decodeJWT = (token: string): Partial<User> | null => {
         .join(""),
     )
     const payload = JSON.parse(jsonPayload)
+    console.log("🔐 Decoded JWT Payload:", payload);
+    const role = (payload.role || (payload.roles && payload.roles[0]) || "STUDENT").toUpperCase();
+    console.log("👤 Extracted Role:", role);
 
     return {
       id: payload.sub, // Backend: sub is the UUID
       email: payload.email || "",
-      role: (payload.role || "STUDENT").toUpperCase() as "ADMIN" | "TEACHER" | "STUDENT" | "PARENT",
+      role: (payload.role || (payload.roles && payload.roles[0]) || "STUDENT").toUpperCase() as "ADMIN" | "TEACHER" | "STUDENT" | "PARENT",
       first_name: payload.name || "User",
       last_name: "",
       school_id: "",
@@ -265,6 +288,7 @@ export class ApiClient {
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl
+    this.loadMockState();
   }
 
   private async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -319,9 +343,24 @@ export class ApiClient {
   }
 
   getCurrentUser(): User | null {
+    // First try to get the stored user object
+    const storedUser = getStoredUser()
+    if (storedUser) {
+      console.log("✅ Using stored user:", storedUser.email, storedUser.role)
+      return storedUser
+    }
+
+    // Fallback to decoding JWT if no stored user
     const token = getAuthToken()
     if (!token) return null
-    return decodeJWT(token) as User | null
+    const decodedUser = decodeJWT(token) as User | null
+
+    // Store the decoded user for future use
+    if (decodedUser) {
+      setStoredUser(decodedUser)
+    }
+
+    return decodedUser
   }
 
   // --- Syllabus CRUD ---
@@ -403,31 +442,197 @@ export class ApiClient {
     }
   }
 
-  // Chapters (Mapped from Topics)
+  // State for hardcoded demo to remember what has been generated
+  // State for hardcoded demo to remember what has been generated
+  // Key: syllabusId, Value: List of Chapters (Topics)
+  private mockSyllabusState = new Map<string, Chapter[]>();
+  private MOCK_STORAGE_KEY = "aula_mock_syllabus_state";
+
+  private saveMockState() {
+    if (typeof window === "undefined") return;
+    try {
+      const obj = Object.fromEntries(this.mockSyllabusState);
+      localStorage.setItem(this.MOCK_STORAGE_KEY, JSON.stringify(obj));
+    } catch (e) {
+      console.error("Failed to save mock state", e);
+    }
+  }
+
+  private loadMockState() {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem(this.MOCK_STORAGE_KEY);
+      if (stored) {
+        const obj = JSON.parse(stored);
+        this.mockSyllabusState = new Map(Object.entries(obj));
+        console.log("🧠 Loaded mock state from localStorage", this.mockSyllabusState);
+      }
+    } catch (e) {
+      console.error("Failed to load mock state", e);
+    }
+  }
+
+  // Chapters (Mapped from Topics) - HARDCODED FOR DEMO
   async getSyllabusChapters(syllabusId: string): Promise<Chapter[]> {
-    const topics = await this.request<BackendTopic[]>(`/api/v1/pdfs/${syllabusId}/topics`)
-    console.log(`📚 Fetched ${topics?.length || 0} topics for syllabus ${syllabusId}`);
+    // 1. Try to fetch from Backend
+    try {
+      const topics = await this.request<BackendTopic[]>(`/api/v1/pdfs/${syllabusId}/topics`);
+      if (topics && topics.length > 0) {
+        console.log(`✅ Fetched ${topics.length} topics for syllabus ${syllabusId}`);
+        return topics.map(topic => this.mapTopicToChapter(topic));
+      }
+    } catch (error) {
+      console.warn("Backend fetch failed, checking for fallback...", error);
+    }
 
-    // For each topic, fetch its generated chapters/lessons
-    const chaptersWithLessons = await Promise.all(
-      (topics || []).map(async (topic) => {
-        try {
-          // Fetch generated chapters (lessons) for this topic
-          const backendChapters = await this.getTopicChapters(topic.id)
-          console.log(`✅ Topic "${topic.title}" has ${backendChapters.length} generated lessons`);
-          return this.mapTopicToChapterWithLessons(topic, backendChapters)
-        } catch (error) {
-          // If no chapters generated yet, return topic with itself as single subchapter
-          console.log(`⚠️ Topic "${topic.title}" has no generated lessons yet`);
-          return this.mapTopicToChapter(topic)
-        }
-      })
-    )
+    // 2. Check in-memory state
+    if (this.mockSyllabusState.has(syllabusId)) {
+      console.log(`🧠 Returning in-memory mock topics for ${syllabusId}`);
+      return this.mockSyllabusState.get(syllabusId)!;
+    }
 
-    return chaptersWithLessons
+    // 3. Fallback: Initialize with hardcoded data
+    console.log(`📚 Initializing hardcoded topics for syllabus ${syllabusId}`);
+
+    // Hardcoded structure based on provided data with enhanced descriptions
+    const hardcodedTopics = [
+      {
+        topic: "Topic 1: Number",
+        description: "Foundation of mathematical understanding covering number systems, calculations, percentages, ratios, and practical applications in finance and time.",
+        chapters: [
+          { chapter: 1, title: "Number and language", description: "Understanding how numbers are expressed in words and symbols, place value, and mathematical language." },
+          { chapter: 2, title: "Accuracy", description: "Rounding, significant figures, decimal places, and understanding measurement accuracy." },
+          { chapter: 3, title: "Calculations and order", description: "Order of operations (BIDMAS/PEMDAS), mental calculation strategies, and estimation techniques." },
+          { chapter: 4, title: "Integers, fractions, decimals and percentages", description: "Working with different number types, converting between forms, and understanding equivalence." },
+          { chapter: 5, title: "Further percentages", description: "Percentage increase and decrease, reverse percentages, and compound percentage changes." },
+          { chapter: 6, title: "Ratio and proportion", description: "Understanding and applying ratios, proportional reasoning, and solving proportion problems." },
+          { chapter: 7, title: "Indices and standard form", description: "Powers and roots, index laws, and expressing very large or small numbers in standard form." },
+          { chapter: 8, title: "Money and finance", description: "Practical applications including budgeting, interest calculations, profit and loss, and financial literacy." },
+          { chapter: 9, title: "Time", description: "Working with time zones, 12/24 hour clock, time intervals, and timetable problems." },
+          { chapter: 10, title: "Set notation and Venn diagrams", description: "Introduction to set theory, set operations, and visual representation using Venn diagrams." }
+        ]
+      },
+      {
+        topic: "Topic 2: Algebra and graphs",
+        description: "Algebraic thinking and graphical representations including equations, functions, sequences, and problem-solving through graphs.",
+        chapters: [
+          { chapter: 11, title: "Algebraic representation and manipulation", description: "Using letters to represent numbers, simplifying expressions, expanding brackets, and factorization." },
+          { chapter: 12, title: "Algebraic indices", description: "Applying index laws to algebraic expressions and solving problems with powers." },
+          { chapter: 13, title: "Equations and inequalities", description: "Solving linear and quadratic equations, simultaneous equations, and working with inequalities." },
+          { chapter: 14, title: "Linear programming", description: "Optimization problems using graphs, feasible regions, and constraint inequalities." },
+          { chapter: 15, title: "Sequences", description: "Arithmetic and geometric sequences, finding nth terms, and pattern recognition." },
+          { chapter: 16, title: "Variation", description: "Direct, inverse, and joint variation, including practical applications and graphical representation." },
+          { chapter: 17, title: "Graphs in practical situations", description: "Real-world graphs including distance-time, speed-time, and other practical contexts." },
+          { chapter: 18, title: "Graphs of functions", description: "Plotting and interpreting linear, quadratic, cubic, and reciprocal graphs." },
+          { chapter: 19, title: "Functions", description: "Function notation, composite functions, inverse functions, and transformations of graphs." }
+        ]
+      },
+      {
+        topic: "Topic 3: Geometry",
+        description: "Study of shapes, constructions, similarity, symmetry, and angle relationships in 2D and 3D geometry.",
+        chapters: [
+          { chapter: 20, title: "Geometrical vocabulary", description: "Understanding geometric terms, classifying shapes, and properties of 2D and 3D figures." },
+          { chapter: 21, title: "Geometrical constructions and scale drawings", description: "Using compass and ruler for accurate constructions, scale drawings, and maps." },
+          { chapter: 22, title: "Similarity", description: "Similar shapes, scale factors, area and volume ratios, and solving problems with similar figures." },
+          { chapter: 23, title: "Symmetry", description: "Line and rotational symmetry, orders of symmetry, and symmetry in nature and design." },
+          { chapter: 24, title: "Angle properties", description: "Angles in parallel lines, polygons, circles, and geometric reasoning." },
+          { chapter: 25, title: "Loci", description: "Path of points satisfying given conditions, constructions involving loci, and practical applications." }
+        ]
+      },
+      {
+        topic: "Topic 5: Coordinate geometry",
+        description: "Analytical approach to geometry using coordinate systems and algebraic methods to study lines and shapes.",
+        chapters: [
+          { chapter: 28, title: "Straight-line graphs", description: "Gradient, y-intercept, equation forms (y=mx+c), parallel and perpendicular lines, and midpoint/distance formulas." }
+        ]
+      },
+      {
+        topic: "Topic 6: Trigonometry",
+        description: "Relationships between angles and sides in triangles, with applications in navigation, surveying, and problem-solving.",
+        chapters: [
+          { chapter: 29, title: "Bearings", description: "Three-figure bearings, compass directions, navigation problems, and scale drawings with bearings." },
+          { chapter: 30, title: "Trigonometry", description: "Sine, cosine, and tangent ratios in right-angled triangles, solving for unknown sides and angles." },
+          { chapter: 31, title: "Further trigonometry", description: "Sine and cosine rules, area of triangles, 3D problems, and exact trigonometric values." }
+        ]
+      },
+      {
+        topic: "Topic 7: Matrices and transformations",
+        description: "Vector mathematics, matrix operations, and geometric transformations including reflections, rotations, and translations.",
+        chapters: [
+          { chapter: 32, title: "Vectors", description: "Vector notation, magnitude and direction, position vectors, and vector arithmetic." },
+          { chapter: 33, title: "Matrices", description: "Matrix notation, addition, subtraction, multiplication, and applications including transformations." },
+          { chapter: 34, title: "Transformations", description: "Translations, reflections, rotations, enlargements, and combined transformations using matrices." }
+        ]
+      },
+      {
+        topic: "Topic 8: Probability",
+        description: "Mathematical study of chance, likelihood, and random events with applications in decision-making and risk assessment.",
+        chapters: [
+          { chapter: 35, title: "Probability", description: "Basic probability concepts, probability scales, experimental and theoretical probability, and sample spaces." },
+          { chapter: 36, title: "Further probability", description: "Tree diagrams, conditional probability, independent and dependent events, and combined events." }
+        ]
+      },
+      {
+        topic: "Topic 9: Statistics",
+        description: "Collection, presentation, and analysis of data using statistical measures and graphical representations.",
+        chapters: [
+          { chapter: 37, title: "Mean, median, mode and range", description: "Measures of central tendency and spread, choosing appropriate averages, and interpreting statistical data." },
+          { chapter: 38, title: "Collecting and displaying data", description: "Data collection methods, frequency tables, charts, graphs, histograms, and scatter diagrams." },
+          { chapter: 39, title: "Cumulative frequency", description: "Cumulative frequency graphs, quartiles, interquartile range, and box plots for data analysis." }
+        ]
+      }
+    ];
+
+    // Map hardcoded structure to frontend Chapter format
+    const chapters: Chapter[] = hardcodedTopics.map((topicData, topicIndex) => {
+      // Create a mock ID for the topic - scoped to syllabus
+      const topicId = `${syllabusId}-topic-${topicIndex + 1}`;
+
+      // Map chapters to subchapters
+      const subchapters: Subchapter[] = topicData.chapters.map((chapterData, chapterIndex) => {
+        // Scoped ID
+        const subId = `${syllabusId}-chapter-${chapterData.chapter}`;
+        return {
+          id: subId,
+          chapter_id: topicId,
+          title: chapterData.title,
+          order_index: chapterIndex,
+          video_status: "NOT_GENERATED",
+          video_progress: 0,
+          is_completed: false,
+          created_at: new Date().toISOString(),
+          text_description: chapterData.description,
+          has_blog: false, // Default to FALSE for new syllabus
+          has_quiz: false
+        };
+      });
+
+      return {
+        id: topicId,
+        syllabus_id: syllabusId,
+        title: topicData.topic,
+        description: topicData.description,
+        order_index: topicIndex,
+        is_generated: true,
+        created_at: new Date().toISOString(),
+        subchapters: subchapters,
+        is_published: false
+      };
+    });
+
+    this.mockSyllabusState.set(syllabusId, chapters);
+    this.saveMockState();
+    console.log(`✅ Returning ${chapters.length} hardcoded topics (newly initialized)`);
+    return chapters;
   }
 
   async getChapter(chapterId: string): Promise<Chapter> {
+    // Try to find in mock state first
+    for (const [sId, chapters] of this.mockSyllabusState.entries()) {
+      const found = chapters.find(c => c.id === chapterId);
+      if (found) return found;
+    }
+
     // Since we are mapping Topics -> Chapters -> [Topic as Subchapter], we just need the topic details
     const topic = await this.request<BackendTopic>(`/api/v1/topics/${chapterId}`).catch(() => ({
       id: chapterId,
@@ -499,6 +704,45 @@ export class ApiClient {
 
   // Subchapters (Mapped from Backend Chapters + Blogs)
   async getSubchapter(subchapterId: string): Promise<Subchapter> {
+    // HARDCODED FALLBACK for demo content
+    // Search in mock state
+    for (const [sId, chapters] of this.mockSyllabusState.entries()) {
+      for (const topic of chapters) {
+        const sub = topic.subchapters?.find(s => s.id === subchapterId);
+        if (sub) {
+          console.log(`✨ Returning mock subchapter details for ${subchapterId}`);
+          return sub;
+        }
+      }
+    }
+
+    if (subchapterId.startsWith("chapter-") || subchapterId.startsWith("topic-")) {
+      // Legacy fallback if not in state (shouldn't happen if initialized properly via getSyllabusChapters)
+      console.log(`✨ Returning legacy hardcoded details for ${subchapterId}`);
+
+      let title = "Lesson Content";
+      let desc = "Lesson Description";
+
+      if (subchapterId === "chapter-1") {
+        title = "Number and language";
+        desc = "Understanding how numbers are expressed in words and symbols, place value, and mathematical language.";
+      }
+
+      return Promise.resolve({
+        id: subchapterId,
+        chapter_id: "topic-1", // associated topic ID mock
+        title: title,
+        order_index: 0,
+        video_status: "NOT_GENERATED",
+        video_progress: 0,
+        is_completed: false,
+        created_at: new Date().toISOString(),
+        text_description: desc,
+        has_blog: false,
+        has_quiz: false
+      });
+    }
+
     try {
       // 1. Try to fetch as a Backend Chapter (Lesson)
       const chapter = await this.request<BackendChapter>(`/api/v1/chapters/${subchapterId}`)
@@ -511,7 +755,9 @@ export class ApiClient {
         video_progress: 0,
         is_completed: false,
         created_at: chapter.created_at,
-        text_description: chapter.description
+        text_description: chapter.description,
+        has_blog: chapter.has_blog,
+        has_quiz: chapter.has_quiz
       }
     } catch (e) {
       // 2. Fallback: It might be a Topic (which acts as a stand-alone lesson in early syllabus version)
@@ -529,15 +775,186 @@ export class ApiClient {
           created_at: topic.created_at,
           text_description: topic.excerpt
         }
-      } catch (topicError) {
-        console.error("Failed to fetch subchapter details", topicError)
-        throw topicError
+      } catch (e2) {
+        console.error("Failed to fetch subchapter details", e);
+        throw e;
       }
     }
   }
 
-  // Content Sections (from Blogs)
+
+  // --- Mock Editing Methods ---
+
+  async updateSectionContent(sectionId: string, newBody: string): Promise<ContentSection> {
+    console.log(`📝 Mock update section ${sectionId} with body length ${newBody.length}`);
+    return Promise.resolve({
+      id: sectionId,
+      body: newBody,
+      updated_at: new Date().toISOString()
+    } as ContentSection);
+  }
+
+  async aiEditSection(sectionId: string, prompt: string, currentBody: string): Promise<string> {
+    console.log(`✨ Mock AI edit for section ${sectionId} with prompt: "${prompt}"`);
+    // Simulate AI delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Simple mock transformation
+    return `[AI Edited: ${prompt}]\n\n${currentBody}\n\n(The content has been updated based on your request.)`;
+  }
+
+  async aiEditVideo(sectionId: string, prompt: string): Promise<void> {
+    console.log(`🎥 Mock AI video edit for section ${sectionId} with prompt: "${prompt}"`);
+    // Simulate AI delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return Promise.resolve();
+  }
+
   async getStudentContentSections(subchapterId: string): Promise<ContentSection[]> {
+    // HARDCODED content for ALL blogs (demo mode)
+    if (true) {
+      console.log(`📄 Returning hardcoded blog content for subchapter: ${subchapterId}`);
+      const hardcodedBlog = {
+        title: "What Exactly *Is* An Integral? (The Big Idea)",
+        content_markdown: `
+# What Exactly *Is* An Integral? (The Big Idea)
+
+## Introduction: The "Area Under the Curve" Problem
+
+Imagine you're driving a car, and your speedometer is broken. You know how fast you were going at various moments, but you want to know **how far you've traveled**. 
+
+If you were driving at a constant 60 mph for 2 hours, it's easy: $60 \\times 2 = 120$ miles. But real life isn't constant. You speed up, slow down, stop for traffic. 
+
+This is the core problem of **Integration** in calculus. It's about adding up tiny, changing quantities to find a total.
+
+{{video_placeholder_1}}
+
+## The Rectangle Approximation (Riemann Sums)
+
+How do we solve this? We cheat! We pretend the speed was constant for very short intervals.
+- From 1:00 to 1:05, say you went roughly 30mph.
+- From 1:05 to 1:10, maybe 40mph.
+
+If we calculate distance for each tiny chunk and add them up, we get a good estimate. This method of adding up rectangles to approximate a total area is called a **Riemann Sum**.
+
+{{video_placeholder_2}}
+
+## From Approximation to Exactness
+
+Now, here's the magic trick of calculus. 
+What if we made those time intervals smaller? And smaller? **Infinitely small?**
+
+As the width of our rectangles approaches zero, our approximation becomes perfect. The jagged steps smooth out into a curve. This limit—where the sum of uniform slices becomes a continuous total—is the **Definite Integral**.
+
+{{video_placeholder_3}}
+
+## Notation: The Long "S"
+
+We write integrals using a symbol that looks like a stretched-out "S" (for "Sum").
+
+$$ \\int_{a}^{b} f(x) \\, dx $$
+
+*   **$\\int$**: The integral sign (sum up everything).
+*   **$a$ and $b$**: The start and end points (e.g., time 0 to time 2).
+*   **$f(x)$**: The function you're tracking (e.g., speed).
+*   **$dx$**: The tiny, tiny slice of width (infinitely small change in x).
+
+{{video_placeholder_4}}
+
+## Why Does This Matter?
+
+Integrals aren't just for math class. They are everywhere:
+1.  **Physics**: From velocity to position, or force to work.
+2.  **Engineering**: Calculating the center of mass or stress on a beam.
+3.  **Economics**: Finding total surplus or accumulated interest.
+
+Integration is the tool we use to move from the "instantaneous" world of rates (derivatives) back to the "accumulated" world of totals.
+        `,
+        video_placeholders: [
+          "/riemann-sum-pipeline.mp4",
+          "/definite-integral-demo.mp4",
+          "/indefinite-integral-demo.mp4",
+          "/integral-notation-breakdown.mp4"
+        ]
+      };
+
+      // Helper to generate UUIDs
+      const generateId = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+
+      console.log(`🔍 splitting markdown with regex...`);
+      // Split content by placeholders
+      const parts = hardcodedBlog.content_markdown.split(/(\{\{video_placeholder_\d+\}\})/g);
+      console.log(`🔍 parts found: ${parts.length}`);
+
+      let orderIndex = 0;
+      const sections: ContentSection[] = []; // Define sections here
+      parts.forEach((part) => {
+        if (!part.trim()) return; // Skip empty parts
+
+        // Check determine if part is a placeholder
+        const match = part.match(/\{\{video_placeholder_(\d+)\}\}/);
+
+        if (match) {
+          // It's a video placeholder
+          const videoIndex = parseInt(match[1]) - 1; // 1-based index to 0-based
+          const videoUrl = hardcodedBlog.video_placeholders[videoIndex];
+          console.log(`🎥 Found video placeholder: ${match[0]}, index: ${videoIndex}, url: ${videoUrl}`);
+
+          if (videoUrl) {
+            const sectionId = generateId();
+            sections.push({
+              id: sectionId,
+              subchapter_id: subchapterId,
+              title: `Video Demo ${videoIndex + 1}`,
+              content_type: "VIDEO",
+              order_index: orderIndex++,
+              body: "", // No text body for video sections
+              is_teacher_locked: false,
+              source_document_ids: [],
+              source_chunk_ids: [],
+              additional_metadata: {},
+              media_versions: [{
+                id: generateId(),
+                section_id: sectionId,
+                version_index: 1,
+                status: "COMPLETED",
+                media_type: "VIDEO",
+                media_url: videoUrl, // Use local path
+                created_at: new Date().toISOString(),
+                additional_metadata: {}
+              }],
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          }
+        } else {
+          // It's a text part
+          console.log(`📝 Found text part: ${part.substring(0, 20)}...`);
+          sections.push({
+            id: generateId(),
+            subchapter_id: subchapterId,
+            title: orderIndex === 0 ? hardcodedBlog.title : "", // Only show title for the first section
+            content_type: "TEXT",
+            order_index: orderIndex++,
+            body: part.trim(),
+            is_teacher_locked: false,
+            source_document_ids: [],
+            source_chunk_ids: [],
+            additional_metadata: {},
+            media_versions: [],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+        }
+      });
+
+      console.log(`✅ Generated ${sections.length} sections`);
+      return sections;
+    }
+
     let blog: BackendBlog | null = null
     try {
       const blogs = await this.request<BackendBlog[]>(`/api/v1/chapters/${subchapterId}/blogs`)
@@ -709,14 +1126,39 @@ export class ApiClient {
   }
 
   async generateChapterBlog(chapterId: string): Promise<any> {
-    return this.request(`/api/v1/blogs/chapters/${chapterId}/generate`, { method: "POST" })
+    console.log(`✨ Mock generate blog for chapter ${chapterId}`);
+
+    // Update state in mockSyllabusState
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      for (const topic of topics) {
+        const sub = topic.subchapters?.find(s => s.id === chapterId);
+        if (sub) {
+          sub.has_blog = true;
+          this.saveMockState();
+          return Promise.resolve({ success: true, message: "Blog generated successfully" });
+        }
+      }
+    }
+
+    return Promise.resolve({ success: true, message: "Blog generated successfully (stateless fallback)" });
   }
 
   async generateQuiz(chapterId: string): Promise<any> {
-    return this.request(`/api/v1/quizzes/generate`, {
-      method: "POST",
-      body: JSON.stringify({ chapter_id: chapterId, question_count: 5 })
-    })
+    console.log(`✨ Mock generate quiz for chapter ${chapterId}`);
+
+    // Update state in mockSyllabusState
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      for (const topic of topics) {
+        const sub = topic.subchapters?.find(s => s.id === chapterId);
+        if (sub) {
+          sub.has_quiz = true;
+          this.saveMockState();
+          return Promise.resolve({ success: true, message: "Quiz generated successfully" });
+        }
+      }
+    }
+
+    return Promise.resolve({ success: true, message: "Quiz generated successfully (stateless fallback)" });
   }
 
   async openChapter(chapterId: string, autoGenerateVideos = true): Promise<any> {
@@ -793,44 +1235,69 @@ export class ApiClient {
 
   async reorderChapters(syllabusId: string, chapterIds: string[]): Promise<any> { return {} }
   async reorderSubchapters(chapterId: string, subchapterIds: string[]): Promise<any> { return {} }
-  // Updated to use the new topics endpoint
+  // Updated to work with mockSyllabusState
   async updateTopic(topicId: string, title?: string, description?: string, is_published?: boolean): Promise<any> {
-    return this.request(`/api/v1/topics/${topicId}`, {
-      method: "PUT",
-      body: JSON.stringify({ title, excerpt: description, is_published })
-    })
-  }
-  async updateChapterTitle(chapterId: string, title: string): Promise<Chapter> {
-    // Backward compatibility mapping to updateTopic
-    return this.updateTopic(chapterId, title);
-  }
-  async updateSubchapterTitle(subchapterId: string, title: string): Promise<Subchapter> {
-    // We use the generic update endpoint or check if there is a specific one
-    // Based on backend patterns, likely PUT /api/v1/chapters/{id} or /api/v1/subchapters/{id}
-    // Looking at backend models, subchapters are likely "BackendChapter"
-    try {
-      await this.request(`/api/v1/chapters/${subchapterId}`, {
-        method: "PUT",
-        body: JSON.stringify({ title })
-      });
-      return this.getSubchapter(subchapterId);
-    } catch (e) {
-      console.error("Failed to update subchapter title", e);
-      throw e;
+    console.log(`✏️ Mock update topic ${topicId}:`, { title, description, is_published });
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      const topic = topics.find(t => t.id === topicId);
+      if (topic) {
+        if (title !== undefined) topic.title = title;
+        if (description !== undefined) topic.description = description;
+        if (is_published !== undefined) topic.is_published = is_published;
+        this.saveMockState();
+        return Promise.resolve({ ...topic });
+      }
     }
+    return Promise.resolve({ id: topicId, title, description, is_published });
   }
+
+  async updateChapterTitle(chapterId: string, title: string): Promise<Chapter> {
+    return this.updateTopic(chapterId, title) as Promise<Chapter>;
+  }
+
+  async updateSubchapterTitle(subchapterId: string, title: string): Promise<Subchapter> {
+    console.log(`✏️ Mock update subchapter ${subchapterId}:`, title);
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      for (const topic of topics) {
+        if (!topic.subchapters) continue;
+        const sub = topic.subchapters.find(s => s.id === subchapterId);
+        if (sub) {
+          sub.title = title;
+          this.saveMockState();
+          return Promise.resolve({ ...sub });
+        }
+      }
+    }
+    return Promise.resolve({ id: subchapterId, title } as Subchapter);
+  }
+
   async deleteChapter(chapterId: string): Promise<any> {
-    // Delete topic (which acts as chapter in current structure)
-    return this.request(`/api/v1/topics/${chapterId}`, {
-      method: "DELETE"
-    })
+    console.log(`🗑️ Mock delete chapter (topic) ${chapterId}`);
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      const idx = topics.findIndex(t => t.id === chapterId);
+      if (idx !== -1) {
+        topics.splice(idx, 1);
+        this.saveMockState();
+        return Promise.resolve({ success: true });
+      }
+    }
+    return Promise.resolve({ success: true });
   }
 
   async deleteSubchapter(subchapterId: string): Promise<any> {
-    // subchapters in frontend are chapters in backend
-    return this.request(`/api/v1/chapters/${subchapterId}`, {
-      method: "DELETE"
-    })
+    console.log(`🗑️ Mock delete subchapter ${subchapterId}`);
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      for (const topic of topics) {
+        if (!topic.subchapters) continue;
+        const idx = topic.subchapters.findIndex(s => s.id === subchapterId);
+        if (idx !== -1) {
+          topic.subchapters.splice(idx, 1);
+          this.saveMockState();
+          return Promise.resolve({ success: true });
+        }
+      }
+    }
+    return Promise.resolve({ success: true });
   }
 
   async createManualSection(subchapterId: string, section: any): Promise<any> { return {} }
@@ -841,8 +1308,76 @@ export class ApiClient {
   async requestMediaRegeneration(sectionId: string, mediaType: string, notes: string): Promise<any> { return {} }
   async generateContentSections(subchapterId: string): Promise<any[]> { return [] }
 
-  async createChapter(syllabusId: string, data: { title: string }): Promise<Chapter> { throw new Error("Not supported") }
-  async createSubchapter(chapterId: string, data: any): Promise<Subchapter> { throw new Error("Not supported") }
+  // MOCK CREATE CHAPTER (Topic)
+  async createChapter(syllabusId: string, data: { title: string }): Promise<Chapter> {
+    console.log(`➕ Mock create topic for syllabus ${syllabusId}: ${data.title}`);
+
+    // Ensure state exists
+    await this.getSyllabusChapters(syllabusId);
+
+    const topics = this.mockSyllabusState.get(syllabusId) || [];
+    const newTopicId = `${syllabusId}-topic-custom-${Date.now()}`;
+
+    const newTopic: Chapter = {
+      id: newTopicId,
+      syllabus_id: syllabusId, // Add syllabusId
+      title: data.title,
+      description: "",
+      order_index: topics.length,
+      is_generated: true,
+      created_at: new Date().toISOString(),
+      is_published: false,
+      subchapters: []
+    };
+
+    topics.push(newTopic);
+    this.mockSyllabusState.set(syllabusId, topics);
+    this.saveMockState();
+    return newTopic;
+  }
+
+  // MOCK CREATE SUBCHAPTER (Lesson)
+  async createSubchapter(chapterId: string, data: { title: string }): Promise<Subchapter> {
+    console.log(`➕ Mock create lesson for topic ${chapterId}: ${data.title}`);
+
+    // Find the topic in state
+    let targetTopic: Chapter | undefined;
+    let syllabusId = "";
+
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      const t = topics.find(t => t.id === chapterId);
+      if (t) {
+        targetTopic = t;
+        syllabusId = sId;
+        break;
+      }
+    }
+
+    if (!targetTopic) {
+      throw new Error("Topic not found in mock state");
+    }
+
+    const newLessonId = `${syllabusId}-lesson-custom-${Date.now()}`;
+    const newLesson: Subchapter = {
+      id: newLessonId,
+      chapter_id: chapterId,
+      title: data.title,
+      order_index: targetTopic.subchapters ? targetTopic.subchapters.length : 0,
+      video_status: "NOT_GENERATED",
+      video_progress: 0,
+      is_completed: false,
+      created_at: new Date().toISOString(),
+      text_description: "",
+      has_blog: false,
+      has_quiz: false
+    };
+
+    if (!targetTopic.subchapters) targetTopic.subchapters = [];
+    targetTopic.subchapters.push(newLesson);
+    this.saveMockState();
+
+    return newLesson;
+  }
 
   async submitContact(data: ContactMessage): Promise<ContactMessage> { return data }
   async getContactMessages(): Promise<ContactMessage[]> { return [] }

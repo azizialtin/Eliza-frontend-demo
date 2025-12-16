@@ -21,7 +21,7 @@ export interface DraggedItem {
     chapterId?: string
 }
 
-export function useSyllabusManagement(syllabusId: string | undefined) {
+export function useSyllabusManagement(syllabusId: string | undefined, syllabusName?: string) {
     const navigate = useNavigate()
     const location = useLocation()
     const { toast } = useToast()
@@ -104,6 +104,20 @@ export function useSyllabusManagement(syllabusId: string | undefined) {
                     const result = await uploadDocument(file, false)
                     lastUploadedDocId = result.document_id;
                     setUploadProgress((prev) => ({ ...prev, [file.name]: 100 }))
+
+                    // RESTORE CLASS NAME
+                    // The backend automatically updates the syllabus name to the filename.
+                    // We want to preserve the name the user entered if it's set.
+                    if (syllabusId && syllabusName && syllabusName.trim() !== "" && syllabusName !== "Untitled Course") {
+                        console.log(`🔄 Restoring syllabus name to: "${syllabusName}"`);
+                        try {
+                            await apiClient.updateSyllabus(syllabusId, { name: syllabusName });
+                        } catch (nameError) {
+                            console.warn("Failed to restore syllabus name after upload:", nameError);
+                            // Don't fail the upload just because name restore failed
+                        }
+                    }
+
                 } catch (error) {
                     handleError(error, { title: "Upload error", showToast: false })
                 }

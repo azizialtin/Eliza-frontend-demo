@@ -49,8 +49,12 @@ const AppRoutes = () => {
         <Route path="/onboarding" element={<Onboarding />} />
 
 
+        {/* Role-based dispatcher - must be protected to ensure user is loaded */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/app" element={<Dashboard />} />
+        </Route>
+
         {/* Student routes */}
-        <Route path="/app" element={<Dashboard />} />
         <Route path="/app/student/dashboard" element={<StudentDashboard />} />
         <Route path="/app/syllabus/:syllabusId" element={<LearningPath />} />
         <Route path="/app/syllabus/:syllabusId/lesson/:subchapterId" element={<SyllabusDetail />} />

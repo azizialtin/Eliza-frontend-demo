@@ -13,6 +13,7 @@ interface SyllabusHeaderProps {
     backUrl?: string
     subchapter: Subchapter
     onComplete: (checked: boolean) => void
+    showComplete?: boolean
 }
 
 export const SyllabusHeader: React.FC<SyllabusHeaderProps> = ({
@@ -20,7 +21,8 @@ export const SyllabusHeader: React.FC<SyllabusHeaderProps> = ({
     lessonTitle,
     backUrl,
     subchapter,
-    onComplete
+    onComplete,
+    showComplete = true
 }) => {
     const navigate = useNavigate()
     const { user } = useAuth()
@@ -58,26 +60,28 @@ export const SyllabusHeader: React.FC<SyllabusHeaderProps> = ({
                 </div>
                 <h1 className="font-brand text-xl md:text-2xl font-bold text-gray-900">{lessonTitle}</h1>
             </div>
-            <div className="flex items-center gap-3">
-                <Checkbox
-                    id="completed"
-                    checked={subchapter.is_completed}
-                    onCheckedChange={onComplete}
-                    className="h-5 w-5 border-2 data-[state=checked]:bg-[hsl(91.4,100%,74.1%)] data-[state=checked]:border-[hsl(91.4,100%,74.1%)]"
-                />
-                <label
-                    htmlFor="completed"
-                    className="font-brand text-sm font-semibold cursor-pointer hidden md:block hover:text-[hsl(91.4,100%,74.1%)] transition-colors"
-                >
-                    Mark complete
-                </label>
-                {subchapter.is_completed && (
-                    <Badge className="bg-gradient-to-r from-eliza-blue to-eliza-purple text-white border-0 hidden md:flex shadow-sm">
-                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                        Done
-                    </Badge>
-                )}
-            </div>
+            {showComplete && (
+                <div className="flex items-center gap-3">
+                    <Checkbox
+                        id="completed"
+                        checked={subchapter.is_completed}
+                        onCheckedChange={onComplete}
+                        className="h-5 w-5 border-2 data-[state=checked]:bg-[hsl(91.4,100%,74.1%)] data-[state=checked]:border-[hsl(91.4,100%,74.1%)]"
+                    />
+                    <label
+                        htmlFor="completed"
+                        className="font-brand text-sm font-semibold cursor-pointer hidden md:block hover:text-[hsl(91.4,100%,74.1%)] transition-colors"
+                    >
+                        Mark complete
+                    </label>
+                    {subchapter.is_completed && (
+                        <Badge className="bg-gradient-to-r from-eliza-blue to-eliza-purple text-white border-0 hidden md:flex shadow-sm">
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Done
+                        </Badge>
+                    )}
+                </div>
+            )}
         </div>
     )
 }

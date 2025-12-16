@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
-import { Edit2, Trash2, Check, X, BookOpen, Settings, Save, Sparkles, Loader2 } from "lucide-react";
+import { Edit2, Trash2, Check, X, BookOpen, Settings, Save, Sparkles, Loader2, Plus } from "lucide-react";
 
 interface TopicReviewProps {
     topics: Chapter[];
@@ -21,11 +21,11 @@ interface TopicReviewProps {
 }
 
 // Adjusted interface to match what we actually need for self-contained editing or cleaner prop passing
+// Adjusted interface to match what we actually need for self-contained editing or cleaner prop passing
 interface BetterTopicReviewProps {
     topics: Chapter[];
     onUpdateTopic: (id: string, newTitle: string, newDescription?: string, is_published?: boolean) => Promise<void>;
     onDeleteTopic: (id: string) => Promise<void>;
-    // We will assume parent passes a generic update function: (id, title) => Promise
     onUpdateSubchapter: (id: string, title: string) => Promise<void>;
     onDeleteSubchapter: (id: string) => Promise<void>;
     mode?: "review" | "generate";
@@ -34,6 +34,8 @@ interface BetterTopicReviewProps {
     onOpenBlog?: (subchapterId: string) => void;
     onOpenQuiz?: (subchapterId: string) => void;
     generatingSubchapterIds?: Set<string>;
+    onAddTopic?: () => Promise<void>;
+    onAddSubchapter?: (topicId: string) => Promise<void>;
 }
 
 export const TopicReview: React.FC<BetterTopicReviewProps> = ({
@@ -47,7 +49,9 @@ export const TopicReview: React.FC<BetterTopicReviewProps> = ({
     onGenerateQuiz,
     onOpenBlog,
     onOpenQuiz,
-    generatingSubchapterIds
+    generatingSubchapterIds,
+    onAddTopic,
+    onAddSubchapter
 }) => {
     // Helper functions for loading state
     const isGeneratingBlog = (id: string) => generatingSubchapterIds?.has(`blog-${id}`);
@@ -85,13 +89,6 @@ export const TopicReview: React.FC<BetterTopicReviewProps> = ({
 
     const saveSub = async () => {
         if (editingSubId && subTitle.trim()) {
-            // We need a way to pass the new title.
-            // The parent `saveSubchapterTitle` in `TeacherSyllabus` uses `editingTitle` state. 
-            // BUT here we are passing a direct handler. 
-            // We need to make sure `TeacherSyllabus`'s `saveSubchapterTitle` is COMPATIBLE or we wrap it.
-            // Actually, `TeacherSyllabus` doesn't expose a (id, title) updater easily without setting state.
-            // So we might need to change `TeacherSyllabus` to accept the handler usage OR update `TopicReview` to use the passed prop correctly.
-            // Let's assume passed prop is `(id, title) => Promise<void>`.
             await onUpdateSubchapter(editingSubId, subTitle);
             setEditingSubId(null);
         }
@@ -101,15 +98,21 @@ export const TopicReview: React.FC<BetterTopicReviewProps> = ({
         <div className="space-y-4 animate-fade-in">
             {topics.length === 0 ? (
                 <div className="text-center py-12 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                    <p className="text-gray-500 font-brand">
+                    <p className="text-gray-500 font-brand mb-4">
                         No topics found. Upload a PDF to automatically extract topics.
                     </p>
+                    {onAddTopic && (
+                        <Button onClick={onAddTopic} variant="outline" className="border-dashed border-gray-400 text-gray-600 hover:border-eliza-blue hover:text-eliza-blue">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add First Topic
+                        </Button>
+                    )}
                 </div>
             ) : (
                 <div className="grid gap-4">
                     {topics.map((topic, index) => {
                         return (
-                            <Card key={topic.id} className="border-l-4 border-l-eliza-purple border-y border-r border-gray-100 shadow-sm hover:shadow-md transition-all">
+                            <Card key={topic.id} className="border-l-4 border-l-eliza-purple border-y border-r border-gray-100 shadow-sm hover:shadow-md transition-all group/card">
                                 <CardContent className="p-4 flex items-start gap-4">
                                     <div className="h-8 w-8 rounded-full bg-eliza-purple/10 text-eliza-purple flex items-center justify-center font-bold text-sm shrink-0 mt-1">
                                         {index + 1}
@@ -161,106 +164,121 @@ export const TopicReview: React.FC<BetterTopicReviewProps> = ({
                                                 )}
 
                                                 {/* Display Generated Subchapters/Lessons */}
-                                                {topic.subchapters && topic.subchapters.length > 0 && (
+                                                {(topic.subchapters && topic.subchapters.length > 0) || mode !== "generate" || !!onAddSubchapter ? (
                                                     <div className="mt-4 space-y-2">
-                                                        <h4 className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Lessons Generated:</h4>
-                                                        <div className="grid gap-2">
-                                                            {topic.subchapters.map((sub, i) => (
-                                                                <div key={sub.id} className="flex items-center gap-2 text-sm bg-gray-50 p-2 rounded border border-gray-100 hover:bg-white hover:border-eliza-blue/50 transition-colors group/lesson">
-                                                                    <span className="w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-[10px] text-gray-500 shrink-0">
-                                                                        {i + 1}
-                                                                    </span>
+                                                        {topic.subchapters && topic.subchapters.length > 0 && (
+                                                            <>
+                                                                <h4 className="text-xs font-semibold uppercase text-gray-500 tracking-wider">Lessons:</h4>
+                                                                <div className="grid gap-2">
+                                                                    {topic.subchapters.map((sub, i) => (
+                                                                        <div key={sub.id} className="flex items-center gap-2 text-sm bg-gray-50 p-2 rounded border border-gray-100 hover:bg-white hover:border-eliza-blue/50 transition-colors group/lesson">
+                                                                            <span className="w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-[10px] text-gray-500 shrink-0">
+                                                                                {i + 1}
+                                                                            </span>
 
-                                                                    {editingSubId === sub.id ? (
-                                                                        <div className="flex-1 flex items-center gap-2">
-                                                                            <Input
-                                                                                value={subTitle}
-                                                                                onChange={(e) => setSubTitle(e.target.value)}
-                                                                                className="h-7 text-sm py-0 px-2"
-                                                                                autoFocus
-                                                                                onKeyDown={(e) => e.key === 'Enter' && saveSub()}
-                                                                            />
-                                                                            <Button size="sm" variant="ghost" onClick={saveSub} className="text-green-600 h-6 w-6 p-0 shrink-0"><Check className="h-3 w-3" /></Button>
-                                                                            <Button size="sm" variant="ghost" onClick={() => setEditingSubId(null)} className="text-gray-400 h-6 w-6 p-0 shrink-0"><X className="h-3 w-3" /></Button>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <>
-                                                                            <span className="text-gray-700 flex-1">{sub.title}</span>
-
-                                                                            {mode === "generate" ? (
-                                                                                <div className="flex items-center gap-2 animate-fade-in">
-                                                                                    {sub.has_blog ? (
-                                                                                        <Button
-                                                                                            size="sm"
-                                                                                            variant="outline"
-                                                                                            onClick={() => onOpenBlog?.(sub.id)}
-                                                                                            className="h-6 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                                                                                        >
-                                                                                            <Check className="w-3 h-3 mr-1" /> Blog Ready
-                                                                                        </Button>
-                                                                                    ) : (
-                                                                                        <Button
-                                                                                            size="sm"
-                                                                                            variant="outline"
-                                                                                            onClick={() => onGenerateBlog?.(sub.id)}
-                                                                                            disabled={isGeneratingBlog(sub.id)}
-                                                                                            className="h-6 text-xs border-eliza-blue/30 text-eliza-blue hover:bg-eliza-blue/10"
-                                                                                        >
-                                                                                            {isGeneratingBlog(sub.id) ? (
-                                                                                                <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Generating...</>
-                                                                                            ) : (
-                                                                                                <><BookOpen className="w-3 h-3 mr-1" /> Generate Blog</>
-                                                                                            )}
-                                                                                        </Button>
-                                                                                    )}
-
-                                                                                    {sub.has_quiz ? (
-                                                                                        <Button
-                                                                                            size="sm"
-                                                                                            variant="outline"
-                                                                                            onClick={() => onOpenQuiz?.(sub.id)}
-                                                                                            className="h-6 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                                                                                        >
-                                                                                            <Check className="w-3 h-3 mr-1" /> Quiz Ready
-                                                                                        </Button>
-                                                                                    ) : (
-                                                                                        <Button
-                                                                                            size="sm"
-                                                                                            variant="outline"
-                                                                                            onClick={() => onGenerateQuiz?.(sub.id)}
-                                                                                            disabled={isGeneratingQuiz(sub.id)}
-                                                                                            className="h-6 text-xs border-orange-200 text-orange-600 hover:bg-orange-50"
-                                                                                        >
-                                                                                            {isGeneratingQuiz(sub.id) ? (
-                                                                                                <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Generating...</>
-                                                                                            ) : (
-                                                                                                <><Sparkles className="w-3 h-3 mr-1" /> Generate Quiz</>
-                                                                                            )}
-                                                                                        </Button>
-                                                                                    )}
+                                                                            {editingSubId === sub.id ? (
+                                                                                <div className="flex-1 flex items-center gap-2">
+                                                                                    <Input
+                                                                                        value={subTitle}
+                                                                                        onChange={(e) => setSubTitle(e.target.value)}
+                                                                                        className="h-7 text-sm py-0 px-2"
+                                                                                        autoFocus
+                                                                                        onKeyDown={(e) => e.key === 'Enter' && saveSub()}
+                                                                                    />
+                                                                                    <Button size="sm" variant="ghost" onClick={saveSub} className="text-green-600 h-6 w-6 p-0 shrink-0"><Check className="h-3 w-3" /></Button>
+                                                                                    <Button size="sm" variant="ghost" onClick={() => setEditingSubId(null)} className="text-gray-400 h-6 w-6 p-0 shrink-0"><X className="h-3 w-3" /></Button>
                                                                                 </div>
                                                                             ) : (
-                                                                                <div className="flex items-center gap-1 opacity-0 group-hover/lesson:opacity-100 transition-opacity">
-                                                                                    <Button variant="ghost" size="sm" onClick={() => startEditingSub(sub)} className="h-6 w-6 p-0 text-gray-400 hover:text-eliza-blue">
-                                                                                        <Edit2 className="h-3 w-3" />
-                                                                                    </Button>
-                                                                                    <Button variant="ghost" size="sm" onClick={() => onDeleteSubchapter(sub.id)} className="h-6 w-6 p-0 text-gray-400 hover:text-red-500">
-                                                                                        <Trash2 className="h-3 w-3" />
-                                                                                    </Button>
-                                                                                </div>
+                                                                                <>
+                                                                                    <span className="text-gray-700 flex-1">{sub.title}</span>
+
+                                                                                    {mode === "generate" ? (
+                                                                                        <div className="flex items-center gap-2 animate-fade-in">
+                                                                                            {sub.has_blog ? (
+                                                                                                <Button
+                                                                                                    size="sm"
+                                                                                                    variant="outline"
+                                                                                                    onClick={() => onOpenBlog?.(sub.id)}
+                                                                                                    className="h-6 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                                                                                                >
+                                                                                                    <Check className="w-3 h-3 mr-1" /> Blog Ready
+                                                                                                </Button>
+                                                                                            ) : (
+                                                                                                <Button
+                                                                                                    size="sm"
+                                                                                                    variant="outline"
+                                                                                                    onClick={() => onGenerateBlog?.(sub.id)}
+                                                                                                    disabled={isGeneratingBlog(sub.id)}
+                                                                                                    className="h-6 text-xs border-eliza-blue/30 text-eliza-blue hover:bg-eliza-blue/10"
+                                                                                                >
+                                                                                                    {isGeneratingBlog(sub.id) ? (
+                                                                                                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Generating...</>
+                                                                                                    ) : (
+                                                                                                        <><BookOpen className="w-3 h-3 mr-1" /> Generate Blog</>
+                                                                                                    )}
+                                                                                                </Button>
+                                                                                            )}
+
+                                                                                            {sub.has_quiz ? (
+                                                                                                <Button
+                                                                                                    size="sm"
+                                                                                                    variant="outline"
+                                                                                                    onClick={() => onOpenQuiz?.(sub.id)}
+                                                                                                    className="h-6 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                                                                                                >
+                                                                                                    <Check className="w-3 h-3 mr-1" /> Quiz Ready
+                                                                                                </Button>
+                                                                                            ) : (
+                                                                                                <Button
+                                                                                                    size="sm"
+                                                                                                    variant="outline"
+                                                                                                    onClick={() => onGenerateQuiz?.(sub.id)}
+                                                                                                    disabled={isGeneratingQuiz(sub.id)}
+                                                                                                    className="h-6 text-xs border-orange-200 text-orange-600 hover:bg-orange-50"
+                                                                                                >
+                                                                                                    {isGeneratingQuiz(sub.id) ? (
+                                                                                                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Generating...</>
+                                                                                                    ) : (
+                                                                                                        <><Sparkles className="w-3 h-3 mr-1" /> Generate Quiz</>
+                                                                                                    )}
+                                                                                                </Button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="flex items-center gap-1 opacity-0 group-hover/lesson:opacity-100 transition-opacity">
+                                                                                            <Button variant="ghost" size="sm" onClick={() => startEditingSub(sub)} className="h-6 w-6 p-0 text-gray-400 hover:text-eliza-blue">
+                                                                                                <Edit2 className="h-3 w-3" />
+                                                                                            </Button>
+                                                                                            <Button variant="ghost" size="sm" onClick={() => onDeleteSubchapter(sub.id)} className="h-6 w-6 p-0 text-gray-400 hover:text-red-500">
+                                                                                                <Trash2 className="h-3 w-3" />
+                                                                                            </Button>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </>
                                                                             )}
-                                                                        </>
-                                                                    )}
+                                                                        </div>
+                                                                    ))}
                                                                 </div>
-                                                            ))}
-                                                        </div>
+                                                            </>
+                                                        )}
+
+                                                        {onAddSubchapter && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => onAddSubchapter(topic.id)}
+                                                                className="w-full justify-start text-xs text-eliza-blue hover:text-eliza-blue/80 hover:bg-eliza-blue/5 mt-2 transition-all opacity-0 group-hover/card:opacity-100"
+                                                            >
+                                                                <Plus className="w-3 h-3 mr-1" /> Add Lesson
+                                                            </Button>
+                                                        )}
                                                     </div>
-                                                )}
+                                                ) : null}
                                             </div>
                                         )}
                                     </div>
 
-                                    {editingTopicId !== topic.id && (
+                                    {editingTopicId !== topic.id && mode !== "generate" && (
                                         <div className="flex items-center gap-2">
                                             <Button
                                                 variant="ghost"
@@ -276,6 +294,15 @@ export const TopicReview: React.FC<BetterTopicReviewProps> = ({
                             </Card>
                         )
                     })}
+
+                    {onAddTopic && (
+                        <div className="flex justify-center mt-4">
+                            <Button onClick={onAddTopic} variant="outline" className="border-dashed h-12 w-full max-w-sm border-gray-300 text-gray-500 hover:text-eliza-blue hover:border-eliza-blue hover:bg-white">
+                                <Plus className="w-4 h-4 mr-2" />
+                                Add New Topic
+                            </Button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

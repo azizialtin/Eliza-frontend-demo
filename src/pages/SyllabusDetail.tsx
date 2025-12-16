@@ -29,9 +29,10 @@ import { BlackboardTab } from "@/components/tabs/BlackboardTab"
 
 interface SyllabusDetailProps {
   backUrlOverride?: string
+  isCreatorMode?: boolean
 }
 
-export default function SyllabusDetail({ backUrlOverride }: SyllabusDetailProps = {}) {
+export default function SyllabusDetail({ backUrlOverride, isCreatorMode = false }: SyllabusDetailProps = {}) {
   const { syllabusId, subchapterId } = useParams()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -212,7 +213,13 @@ export default function SyllabusDetail({ backUrlOverride }: SyllabusDetailProps 
     { id: "tutor", label: "AI Tutor", icon: MessageSquare, color: `hsl(${ELIZA_COLORS.YELLOW})` },
     { id: "quiz", label: "Quiz", icon: ClipboardCheck, color: `hsl(${ELIZA_COLORS.RED})`, locked: !canAccessQuiz },
     { id: "blackboard", label: "Blackboard", icon: PenTool, color: `hsl(${ELIZA_COLORS.GREEN})` },
-  ]
+  ].filter(tab => {
+    if (isCreatorMode) {
+      // In creator mode, hide PDF, AI Tutor, and Blackboard
+      return !["pdf", "tutor", "blackboard"].includes(tab.id)
+    }
+    return true
+  })
 
   if (syllabus?.status === "GENERATING_STRUCTURE") {
     return <PageLoader text="Generating your personalized curriculum... This may take a minute." />
@@ -232,6 +239,7 @@ export default function SyllabusDetail({ backUrlOverride }: SyllabusDetailProps 
           subchapter={enhancedSubchapter}
           onComplete={handleSubchapterComplete}
           backUrl={finalBackUrl}
+          showComplete={!isCreatorMode}
         />
       )}
 

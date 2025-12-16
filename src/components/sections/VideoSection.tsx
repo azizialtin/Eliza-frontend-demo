@@ -1,10 +1,14 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
-import type { ContentSection, MediaVersion } from "@/types/content-sections"
+import { useState, useMemo } from "react"
+import { ContentSection } from "@/types/content-sections"
 import { cn } from "@/lib/utils"
-import { Play, Loader2, AlertCircle, Video } from "lucide-react"
+import { PlayCircle, Loader2, Sparkles, Wand2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { apiClient } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 
 interface VideoSectionProps {
   section: ContentSection
@@ -12,156 +16,163 @@ interface VideoSectionProps {
   onVideoProgress?: (progress: number) => void
 }
 
-export const VideoSection: React.FC<VideoSectionProps> = ({ section, className, onVideoProgress }) => {
-  const [isLoading, setIsLoading] = useState(true)
-  const [hasError, setHasError] = useState(false)
-  const [loadProgress, setLoadProgress] = useState(0)
+export const VideoSection = ({ section, className, onVideoProgress }: VideoSectionProps) => {
+  const { toast } = useToast()
 
-  const getLatestApprovedMedia = (): MediaVersion | null => {
-    if (!section.media_versions || section.media_versions.length === 0) {
-      return null
+  // Video state (simplified for this mocked version, assuming native controls or basic playback)
+  const [isPlaying, setIsPlaying] = useState(false)
+
+  // Edit / AI state
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [isAiGenerating, setIsAiGenerating] = useState(false)
+
+  // Find the latest approved version or the most recent one
+  // In a real app, we might also check for a pending version to show a "processing" state
+  const currentVersion = useMemo(() => {
+    if (!section.media_versions?.length) return null
+    // Prefer approved, then pending, then rejected? Or just latest?
+    // Let's take the latest COMPLETED one for display.
+    return section.media_versions.find(v => v.status === "COMPLETED") || section.media_versions[0]
+  }, [section.media_versions])
+
+  const isProcessing = section.media_versions?.some(v => v.status === "PENDING" || v.status === "PROCESSING") || isAiGenerating
+
+  const handleAiVideoEdit = async () => {
+    if (!aiPrompt.trim()) return;
+    setIsAiGenerating(true);
+    try {
+      await apiClient.aiEditVideo(section.id, aiPrompt);
+      setIsAiDialogOpen(false);
+      setAiPrompt("");
+      toast({
+        title: "Video Generation Started",
+        description: "It may take a few moments for the new video to appear.",
+      });
+      // In a real app, we'd refetch or the server would push an update. 
+      // Here we just rely on the 'isAiGenerating' state or simulated delay.
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to trigger video generation.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsAiGenerating(false);
     }
-    const approvedVersions = section.media_versions
-      .filter((v) => v.status === "READY" || v.status === "approved" || v.status === "COMPLETED")
-      .sort((a, b) => b.version_index - a.version_index)
-    return approvedVersions[0] || null
-  }
-
-  const latestMedia = getLatestApprovedMedia()
-  const hasPendingMedia = section.media_versions?.some((v) => v.status === "pending" || v.status === "processing")
-
-  const handleVideoLoad = () => {
-    setIsLoading(false)
-    setHasError(false)
-    setLoadProgress(100)
-  }
-
-  const handleVideoError = () => {
-    setIsLoading(false)
-    setHasError(true)
-  }
-
-  const handleVideoProgress = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-    const video = e.currentTarget
-    if (video.buffered.length > 0) {
-      const bufferedEnd = video.buffered.end(video.buffered.length - 1)
-      const duration = video.duration
-      if (duration > 0) {
-        const progress = (bufferedEnd / duration) * 100
-        setLoadProgress(Math.min(progress, 100))
-
-        // Once we have enough buffered (e.g., 5%), we can hide the loading overlay
-        if (progress > 5 && isLoading) {
-          setIsLoading(false)
-        }
-      }
-    }
-  }
-
-  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-    const video = e.currentTarget
-    const progress = (video.currentTime / video.duration) * 100
-    if (onVideoProgress && !isNaN(progress)) {
-      onVideoProgress(progress)
-    }
-  }
+  };
 
   return (
     <section
       className={cn(
-        "video-section group relative",
-        "mb-12",
-        "animate-fade-in",
-        className,
+        "video-section my-12 scroll-mt-20",
+        className
       )}
-      role="region"
-      aria-label={`Video section: ${section.title}`}
-      aria-labelledby={`video-title-${section.id}`}
+      aria-label={`Video: ${section.title}`}
     >
-      {/* Badge */}
-      <div className="flex items-center justify-between mb-6">
-        <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold bg-eliza-red text-white shadow-lg">
-          <Video className="w-5 h-5" />
-          Video Lesson
-        </span>
+      {/* Header with Title and Edit Button */}
+      <div className="flex items-center justify-between mb-4">
+        {section.title && (
+          <h3 className="text-xl font-brand font-semibold text-gray-900 flex items-center gap-2">
+            <PlayCircle className="w-5 h-5 text-eliza-blue" />
+            {section.title}
+          </h3>
+        )}
+
+        {/* Edit Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsAiDialogOpen(true)}
+          className="h-8 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+          disabled={isProcessing}
+        >
+          <Wand2 className="w-3.5 h-3.5 mr-1.5" />
+          {isProcessing ? "Generating..." : "Edit Video"}
+        </Button>
       </div>
 
-      {/* Section title */}
-      {section.title && (
-        <h3
-          id={`video-title-${section.id}`}
-          className="text-3xl md:text-4xl font-brand font-bold mb-6 text-gray-900 leading-tight"
-        >
-          {section.title}
-        </h3>
-      )}
-
-      {/* Video player container */}
-      <div className="video-container relative bg-black rounded-2xl overflow-hidden shadow-2xl aspect-video mb-6">
-        {latestMedia && latestMedia.media_url ? (
-          <>
-            {isLoading && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800 z-10">
-                <Loader2 className="w-12 h-12 animate-spin text-white mb-4" />
-                <p className="text-white font-medium mb-3">Loading video...</p>
-                {/* Progress bar */}
-                <div className="w-64 h-2 bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-eliza-red to-orange-500 transition-all duration-300 ease-out"
-                    style={{ width: `${loadProgress}%` }}
-                  />
-                </div>
-                <p className="text-white/70 text-sm mt-2">{Math.round(loadProgress)}%</p>
-              </div>
-            )}
-
-            <video
-              className="w-full h-full"
-              controls
-              onLoadedData={handleVideoLoad}
-              onError={handleVideoError}
-              onTimeUpdate={handleTimeUpdate}
-              onProgress={handleVideoProgress}
-              preload="auto"
-            >
-              <source src={latestMedia.media_url} type="video/mp4" />
-              <track kind="captions" src={latestMedia.metadata?.captions_url} srcLang="en" label="English" />
-              Your browser does not support the video tag.
-            </video>
-
-            {hasError && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-red-900 to-red-800">
-                <AlertCircle className="w-16 h-16 text-white mb-4" />
-                <p className="text-white font-bold text-xl mb-2">Oops! Video failed to load</p>
-                <p className="text-white/80 text-sm">Please refresh the page or try again later</p>
-              </div>
-            )}
-          </>
+      <div className={cn(
+        "relative rounded-2xl overflow-hidden bg-black aspect-video shadow-lg ring-1 ring-black/5",
+        isProcessing && "opacity-90 pointer-events-none"
+      )}>
+        {currentVersion?.media_url ? (
+          <video
+            src={currentVersion.media_url}
+            controls
+            className="w-full h-full object-cover"
+            poster={currentVersion.thumbnail_url}
+          />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
-            {hasPendingMedia ? (
+          <div className="flex flex-col items-center justify-center w-full h-full text-gray-400 bg-gray-900">
+            {isProcessing ? (
               <>
-                <Loader2 className="w-16 h-16 animate-spin text-white mb-4" />
-                <p className="text-white font-bold text-xl mb-2">Creating your video...</p>
-                <p className="text-white/80 text-sm">This usually takes a few minutes</p>
+                <Loader2 className="w-8 h-8 animate-spin mb-2 text-purple-400" />
+                <span className="text-sm font-medium text-gray-300">Generating video...</span>
               </>
             ) : (
               <>
-                <Play className="w-16 h-16 text-white/50 mb-4" />
-                <p className="text-white font-bold text-xl mb-2">Video coming soon</p>
-                <p className="text-white/80 text-sm">Check back later for video content</p>
+                <PlayCircle className="w-12 h-12 mb-2 opacity-50" />
+                <span>No video available</span>
               </>
             )}
           </div>
         )}
+
+        {/* Overlay if processing changes */}
+        {isProcessing && currentVersion && (
+          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center backdrop-blur-sm z-10">
+            <div className="bg-white p-4 rounded-full shadow-xl mb-4">
+              <Loader2 className="w-8 h-8 text-purple-600 animate-spin" />
+            </div>
+            <p className="text-white font-medium text-lg drop-shadow-md">AI is updating this video...</p>
+            <p className="text-white/80 text-sm mt-1">This usually takes about a minute.</p>
+          </div>
+        )}
       </div>
 
-      {/* Video description */}
-      {section.body && (
-        <div className="bg-white/50 rounded-2xl p-6 backdrop-blur-sm">
-          <p className="text-lg text-gray-700 leading-relaxed">{section.body}</p>
-        </div>
-      )}
+      {/* AI Edit Dialog */}
+      <Dialog open={isAiDialogOpen} onOpenChange={setIsAiDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-purple-600" />
+              AI Video Director
+            </DialogTitle>
+            <DialogDescription>
+              Describe how you want to change the video.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              placeholder="e.g. 'Use a more enthusiastic tone', 'Add subtitles', 'Focus on the formula steps'..."
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAiVideoEdit()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAiDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleAiVideoEdit}
+              disabled={isAiGenerating || !aiPrompt.trim()}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {isAiGenerating ? (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2 animate-spin" />
+                  Requesting...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-4 h-4 mr-2" />
+                  Generate
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

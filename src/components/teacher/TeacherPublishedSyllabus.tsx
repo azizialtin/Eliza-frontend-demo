@@ -139,7 +139,7 @@ export function TeacherPublishedSyllabus({ syllabusId }: TeacherPublishedSyllabu
                 actions={
                     <Button
                         variant="outline"
-                        onClick={() => navigate(`/app/teacher/syllabus/${syllabusId}/manage?mode=edit`)}
+                        onClick={() => navigate(`/app/teacher/syllabus/${syllabusId}/manage?mode=edit&step=2`)}
                     >
                         <Settings className="w-4 h-4 mr-2" />
                         Edit Structure
@@ -173,7 +173,7 @@ export function TeacherPublishedSyllabus({ syllabusId }: TeacherPublishedSyllabu
                         <div className="flex justify-between items-center">
                             <h2 className="text-xl font-bold font-brand text-gray-900">Class Curriculum</h2>
                             <Button
-                                onClick={() => navigate(`/app/teacher/syllabus/${syllabusId}/manage?mode=edit`)}
+                                onClick={() => navigate(`/app/teacher/syllabus/${syllabusId}/manage?mode=edit&step=2`)}
                                 className="bg-eliza-blue hover:bg-eliza-blue/90 text-white"
                             >
                                 <Plus className="w-4 h-4 mr-2" />
