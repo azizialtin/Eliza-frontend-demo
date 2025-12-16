@@ -1,5 +1,6 @@
 // API Configuration - Monolith URL
-const MANAGER_URL = import.meta.env.VITE_MANAGER_URL || "http://localhost:8000"
+//const MANAGER_URL = import.meta.env.VITE_MANAGER_URL || "http://localhost:8000"
+const MANAGER_URL = "http://127.0.0.1:8000"
 
 // Backwards compatibility - everything points to MANAGER_URL
 const CONTENT_URL = MANAGER_URL
@@ -156,6 +157,128 @@ export interface Question {
   question_text: string
   question_type: string
   order_index: number
+}
+
+// --- Quiz & Assessment Interfaces ---
+
+export interface QuizQuestion {
+  id: string
+  type: "multiple_choice" | "fill_blank" | "short_calculation"
+  question: string
+  options?: string[] | { id: string; text: string }[]
+  difficulty: "easy" | "medium" | "hard"
+  points?: number
+}
+
+export interface Assessment {
+  quiz_id: string
+  title: string
+  chapter_id?: string
+  topic_id?: string
+  total_questions: number
+  created_at: string
+  has_attempt: boolean
+  attempt_status?: "IN_PROGRESS" | "COMPLETED" | "FAILED"
+  attempt_id?: string
+  score?: number
+  percentage?: number
+  completed_at?: string
+}
+
+export interface CurrentQuestionResponse {
+  attempt_id: string
+  question_index: number
+  total_questions: number
+  question: QuizQuestion
+}
+
+export interface AnswerResponse {
+  is_correct: boolean
+  explanation: string
+  correct_answer?: string
+  all_questions_answered: boolean
+  next_question?: QuizQuestion // For immediate next question flow if applicable
+}
+
+export interface QuizSummary {
+  attempt_id: string
+  quiz_id: string
+  score: number
+  total_points: number
+  percentage: number
+  status: string
+  completed_at: string
+  questions: {
+    id: string
+    question: string
+    is_correct: boolean
+    user_answer: string
+    correct_answer: string
+    explanation: string
+  }[]
+  remedial_plan?: {
+    weak_concepts: string[]
+    recommended_actions: string[]
+  }
+}
+
+export interface RemedialQuestionResponse {
+  remedial_id: string
+  question: QuizQuestion
+  attempt_id: string
+  original_question_id: string
+  questions_remaining: number
+}
+
+export interface SubmitRemedialAnswerResponse {
+  is_correct: boolean
+  explanation: string
+  remedial_completed: boolean
+  next_question?: QuizQuestion
+  message?: string
+  correct_answer?: string
+}
+
+export interface PracticeSession {
+  session_id: string
+  student_id: string
+  chapter_id?: string
+  difficulty: string
+  total_questions_answered: number
+  correct_count: number
+  current_streak: number
+  is_active: boolean
+}
+
+export interface PracticeStartResponse extends PracticeSession {
+  first_question: QuizQuestion
+}
+
+export interface PracticeAnswerResponse {
+  is_correct: boolean
+  explanation: string
+  next_question?: QuizQuestion
+  correct_answer?: string
+}
+
+export interface TopicQuizResponse {
+  quiz_id: string
+  title: string
+  total_questions: number
+  questions: QuizQuestion[]
+}
+
+export interface TopicQuizEligibility {
+  eligible: boolean
+  reason?: string;
+  missing_chapters: string[];
+}
+
+export interface ExistingTopicQuiz {
+  has_quiz: boolean
+  quiz_id?: string
+  has_attempt: boolean
+  attempt_completed: boolean
 }
 
 // --- Internal Backend Models (for Mapping) ---
@@ -365,9 +488,17 @@ export class ApiClient {
 
   // --- Syllabus CRUD ---
   async createSyllabus(name: string): Promise<Syllabus> {
+    // Backend expects a file upload. We create a placeholder PDF.
+    const placeholderContent = "Placeholder PDF content for " + name;
+    // Create a blob with PDF type
+    const blob = new Blob([placeholderContent], { type: "application/pdf" });
+
+    // Ensure filename ends with .pdf
+    const filename = name.toLowerCase().endsWith(".pdf") ? name : `${name}.pdf`;
+
     const formData = new FormData()
-    formData.append("name", name)
-    // auto_process defaults to True in backend, so we don't need to send it if we want default behavior
+    // The backend uses 'file' field and takes the filename from the uploaded file
+    formData.append("file", blob, filename);
 
     // We must NOT set Content-Type header when sending FormData, let the browser set it with boundary
     const response = await fetch(`${this.baseUrl}/api/v1/pdfs/`, {
@@ -1144,21 +1275,17 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
   }
 
   async generateQuiz(chapterId: string): Promise<any> {
-    console.log(`✨ Mock generate quiz for chapter ${chapterId}`);
+    console.log(`✨ Generating quiz for chapter ${chapterId}`);
 
-    // Update state in mockSyllabusState
-    for (const [sId, topics] of this.mockSyllabusState.entries()) {
-      for (const topic of topics) {
-        const sub = topic.subchapters?.find(s => s.id === chapterId);
-        if (sub) {
-          sub.has_quiz = true;
-          this.saveMockState();
-          return Promise.resolve({ success: true, message: "Quiz generated successfully" });
-        }
-      }
+    // Fix: If id is "UUID-chapter-index", extract UUID
+    let cleanId = chapterId;
+    const uuidMatch = chapterId.match(/^([a-f0-9\-]{36})-chapter-\d+$/i);
+    if (uuidMatch) {
+      console.log(`🧹 Sanitizing quiz ID for generation: ${chapterId} -> ${uuidMatch[1]}`);
+      cleanId = uuidMatch[1];
     }
 
-    return Promise.resolve({ success: true, message: "Quiz generated successfully (stateless fallback)" });
+    return this.request(`/api/v1/quizzes/chapter/${cleanId}/generate`, { method: "POST" });
   }
 
   async openChapter(chapterId: string, autoGenerateVideos = true): Promise<any> {
@@ -1403,6 +1530,94 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
 
   async requestPersonalizedSection(subchapterId: string, request: any): Promise<ContentSection> { throw new Error("Not implemented") }
   async trackSectionView(subchapterId: string, sectionId: string): Promise<void> { }
+
+  // --- Quiz Methods ---
+
+  // Chapter Quizzes (Frontend Subchapter = Backend Chapter)
+  async getQuizByChapter(subchapterId: string): Promise<Assessment> {
+    // NOTE: frontend "subchapter" maps to backend "chapter"
+    // Fix: If subchapterId is in format "UUID-chapter-index" (from mock/legacy), extract the UUID
+    let cleanId = subchapterId;
+    const uuidMatch = subchapterId.match(/^([a-f0-9\-]{36})-chapter-\d+$/i);
+    if (uuidMatch) {
+      console.log(`🧹 Sanitizing quiz ID: ${subchapterId} -> ${uuidMatch[1]}`);
+      cleanId = uuidMatch[1];
+    }
+
+    return this.request<Assessment>(`/api/v1/quizzes/chapter/${cleanId}`)
+  }
+
+  async startQuiz(quizId: string): Promise<CurrentQuestionResponse> {
+    return this.request<CurrentQuestionResponse>(`/api/v1/quizzes/${quizId}/start`, { method: "POST" })
+  }
+
+  async getCurrentQuestion(attemptId: string): Promise<CurrentQuestionResponse> {
+    return this.request<CurrentQuestionResponse>(`/api/v1/quizzes/attempts/${attemptId}/current-question`)
+  }
+
+  async answerQuestion(attemptId: string, questionId: string, answer: string): Promise<AnswerResponse> {
+    return this.request<AnswerResponse>(`/api/v1/quizzes/attempts/${attemptId}/answer-question`, {
+      method: "POST",
+      body: JSON.stringify({ question_id: questionId, answer })
+    })
+  }
+
+  async getQuizSummary(attemptId: string): Promise<QuizSummary> {
+    return this.request<QuizSummary>(`/api/v1/quizzes/attempts/${attemptId}/summary`)
+  }
+
+  // --- Remediation Flow ---
+  async chooseRemedialDifficulty(attemptId: string, questionId: string, difficulty: "easy" | "medium" | "hard"): Promise<RemedialQuestionResponse> {
+    return this.request<RemedialQuestionResponse>(`/api/v1/quizzes/attempts/${attemptId}/choose-difficulty/${questionId}`, {
+      method: "POST",
+      body: JSON.stringify({ difficulty })
+    })
+  }
+
+  async submitRemedialAnswer(remedialId: string, answer: string): Promise<SubmitRemedialAnswerResponse> {
+    return this.request<SubmitRemedialAnswerResponse>(`/api/v1/quizzes/remedial/${remedialId}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ answer })
+    })
+  }
+
+  // --- Topic Quizzes (Frontend Chapter = Backend Topic) ---
+
+  async getExistingTopicQuiz(topicId: string): Promise<ExistingTopicQuiz> {
+    return this.request<ExistingTopicQuiz>(`/api/v1/topic-quizzes/topic/${topicId}/existing`)
+  }
+
+  async checkTopicQuizEligibility(quizId: string): Promise<TopicQuizEligibility> {
+    return this.request<TopicQuizEligibility>(`/api/v1/topic-quizzes/${quizId}/eligibility`)
+  }
+
+  async generateTopicQuiz(topicId: string): Promise<TopicQuizResponse> {
+    return this.request<TopicQuizResponse>(`/api/v1/topic-quizzes/generate`, {
+      method: "POST",
+      body: JSON.stringify({ topic_id: topicId })
+    })
+  }
+
+  // --- Practice Sessions ---
+  async startPracticeSession(chapterId: string, difficulty: string = "adaptive"): Promise<PracticeStartResponse> {
+    return this.request<PracticeStartResponse>(`/api/v1/practice/sessions`, {
+      method: "POST",
+      body: JSON.stringify({ chapter_id: chapterId, difficulty })
+    })
+  }
+
+  async answerPracticeQuestion(sessionId: string, questionId: string, answer: string): Promise<PracticeAnswerResponse> {
+    return this.request<PracticeAnswerResponse>(`/api/v1/practice/sessions/${sessionId}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ question_id: questionId, answer })
+    })
+  }
+
+  async generateMorePracticeQuestions(sessionId: string): Promise<{ next_question: QuizQuestion }> {
+    return this.request<{ next_question: QuizQuestion }>(`/api/v1/practice/sessions/${sessionId}/generate-more`, {
+      method: "POST"
+    })
+  }
 }
 
 export const apiClient = new ApiClient(MANAGER_URL)

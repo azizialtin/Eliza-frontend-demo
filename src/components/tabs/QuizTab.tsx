@@ -5,13 +5,13 @@
 
 import type React from "react"
 import { useState } from "react"
-import { useQuizQuestions, useSubmitAttempt } from "@/hooks/useQuizQuestions"
+import { useQuery } from "@tanstack/react-query"
 import { QuizInterface } from "@/components/quiz/QuizInterface"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, AlertCircle, Lock, Trophy, Star, ArrowRight, BookOpen, Clock, Target } from "lucide-react"
-import type { QuizAttempt } from "@/types/quiz"
 import { cn } from "@/lib/utils"
+import { apiClient } from "@/lib/api"
 
 interface QuizTabProps {
   subchapterId: string
@@ -24,24 +24,12 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
   const [isQuizActive, setIsQuizActive] = useState(false)
   const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "standard" | "hard">("standard")
 
-  const { data: questions, isLoading, error } = useQuizQuestions(subchapterId)
-  const submitAttempt = useSubmitAttempt(subchapterId)
-
-  // Handle single question answer
-  const handleAnswerQuestion = async (questionId: string, answerId: string): Promise<QuizAttempt> => {
-    try {
-      return await submitAttempt.mutateAsync({
-        questionId,
-        attempt: {
-          selected_option_id: answerId,
-          time_spent_seconds: 0, // Should measure this in the UI
-        },
-      })
-    } catch (error) {
-      console.error(`Failed to submit answer for question ${questionId}:`, error)
-      throw error
-    }
-  }
+  // Fetch Quiz Metadata
+  const { data: quiz, isLoading, error } = useQuery({
+    queryKey: ['quiz-metadata', subchapterId],
+    queryFn: () => apiClient.getQuizByChapter(subchapterId),
+    enabled: !!subchapterId
+  })
 
   // Start quiz
   const handleStartQuiz = () => {
@@ -75,7 +63,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
       <div className={className}>
         <Alert variant="destructive" className="border-red-200 bg-red-50">
           <AlertCircle className="w-4 h-4 text-red-600" />
-          <AlertDescription className="text-red-800">Failed to load quiz questions. Please try refreshing the page.</AlertDescription>
+          <AlertDescription className="text-red-800">Failed to load quiz information. The quiz might not be generated yet.</AlertDescription>
         </Alert>
       </div>
     )
@@ -99,8 +87,8 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
     )
   }
 
-  // Empty state
-  if (!questions || questions.length === 0) {
+  // Empty state (If 404 handled by returning null or empty, currently api throws so likely hits error block, but checking just in case)
+  if (!quiz) {
     return (
       <div className={cn("flex flex-col items-center justify-center py-20 min-h-[400px] text-center", className)}>
         <div className="w-24 h-24 bg-eliza-blue/10 rounded-full flex items-center justify-center mb-6">
@@ -119,19 +107,13 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
     )
   }
 
-  const filteredQuestions = selectedDifficulty
-    ? questions?.filter((q) => q.difficulty === selectedDifficulty || !q.difficulty) // Include matching or undefined difficulty
-    : questions
-
-  // Create a display list. If filtered is empty (e.g. no questions with that difficulty info), show all.
-  const displayQuestions = filteredQuestions.length > 0 ? filteredQuestions : questions;
-
-  // Show quiz interface if active
+  // Show quiz interface if active or if there is an in-progress attempt
+  // Auto-open if there is an active attempt? Maybe strict user action is better.
   if (isQuizActive) {
     return (
       <QuizInterface
-        questions={displayQuestions}
-        onAnswerQuestion={handleAnswerQuestion}
+        quizId={quiz.quiz_id}
+        initialAttemptId={quiz.attempt_id}
         onClose={handleCloseQuiz}
         className={className}
       />
@@ -188,17 +170,17 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
           </svg>
         </div>
         <h2 className="text-4xl md:text-5xl font-brand font-bold text-gray-900 mb-4 tracking-tight">
-          Ready to Ace This?
+          {quiz.has_attempt ? "Continue Your Quiz" : "Ready to Ace This?"}
         </h2>
         <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-          Test your knowledge with <span className="font-bold text-gray-900">{questions.length} questions</span> designed to master the material.
+          Test your knowledge with <span className="font-bold text-gray-900">{quiz.total_questions} questions</span> designed to master the material.
         </p>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center">
-          <div className="text-3xl font-bold text-gray-900 mb-1">{questions.length}</div>
+          <div className="text-3xl font-bold text-gray-900 mb-1">{quiz.total_questions}</div>
           <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Questions</div>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center">
@@ -206,16 +188,20 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
           <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Est. Time</div>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center">
-          <div className="text-3xl font-bold text-gray-900 mb-1">70%</div>
-          <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Pass Score</div>
+          <div className="text-3xl font-bold text-gray-900 mb-1">
+            {quiz.score !== undefined ? `${quiz.score}/${quiz.total_questions}` : "70%"}
+          </div>
+          <div className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            {quiz.score !== undefined ? "Current Score" : "Pass Score"}
+          </div>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center">
-          <div className="text-3xl font-bold text-gray-900 mb-1">All</div>
+          <div className="text-3xl font-bold text-gray-900 mb-1">{quiz.has_attempt ? "1" : "0"}</div>
           <div className="text-xs font-bold uppercase tracking-wider text-gray-400">Attempts</div>
         </div>
       </div>
 
-      {/* Difficulty Selection */}
+      {/* Difficulty Selection (Visual only for Chapter Quizzes as they are fixed, but nice to keep) */}
       <div className="mb-12">
         <h3 className="text-lg font-bold text-gray-900 mb-4 text-center">Select Difficulty</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -258,7 +244,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
           onClick={handleStartQuiz}
           className="h-14 pl-10 pr-8 rounded-2xl bg-gradient-to-r from-eliza-blue to-eliza-purple hover:scale-105 active:scale-95 transition-all text-white font-bold text-lg shadow-xl shadow-eliza-blue/20 w-full sm:w-auto flex items-center justify-center gap-2 group"
         >
-          Start Quiz
+          {quiz.has_attempt ? "Resume Quiz" : "Start Quiz"}
           <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
         </Button>
       </div>

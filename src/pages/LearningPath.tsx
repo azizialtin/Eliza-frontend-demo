@@ -18,6 +18,8 @@ import { type Chapter, type BackendChapter, apiClient } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { PracticeInterface } from "@/components/quiz/PracticeInterface"
+import { Target, Trophy } from "lucide-react"
 
 export default function LearningPath() {
   const { syllabusId } = useParams()
@@ -25,6 +27,8 @@ export default function LearningPath() {
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [generatedChapters, setGeneratedChapters] = useState<Record<string, BackendChapter[]>>({})
   const [generatingChapters, setGeneratingChapters] = useState<Set<string>>(new Set())
+  const [activePracticeSession, setActivePracticeSession] = useState<{ topicId: string, topicName: string } | null>(null)
+  const [activeTopicQuiz, setActiveTopicQuiz] = useState<{ topicId: string, topicName: string } | null>(null) // Placeholder for Topic Quiz
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -204,6 +208,30 @@ export default function LearningPath() {
                           )}
                         </Button>
                       )}
+                      {/* Topic Actions (Practice & Quiz) */}
+                      {hasSubchapters && (
+                        <div className="flex flex-col gap-2 w-full mt-2 md:mt-0">
+                          <Button
+                            variant="outline"
+                            className="w-full border-eliza-blue/20 text-eliza-blue hover:bg-eliza-blue/5"
+                            onClick={() => setActivePracticeSession({ topicId: chapter.id, topicName: chapter.title })}
+                          >
+                            <Target className="mr-2 h-4 w-4" />
+                            Practice
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            className="w-full border-eliza-purple/20 text-eliza-purple hover:bg-eliza-purple/5"
+                            onClick={() => {
+                              toast({ title: "Topic Quiz", description: "Coming soon! Finish all lessons first." })
+                            }}
+                          >
+                            <Trophy className="mr-2 h-4 w-4" />
+                            Topic Quiz
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -307,6 +335,14 @@ export default function LearningPath() {
           )}
         </div>
       </div>
+
+      {activePracticeSession && (
+        <PracticeInterface
+          topicId={activePracticeSession.topicId}
+          topicName={activePracticeSession.topicName}
+          onClose={() => setActivePracticeSession(null)}
+        />
+      )}
     </div>
   )
 }
