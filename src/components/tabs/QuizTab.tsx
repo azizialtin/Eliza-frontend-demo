@@ -7,9 +7,10 @@ import type React from "react"
 import { useState } from "react"
 import { useQuizQuestions, useSubmitAttempt } from "@/hooks/useQuizQuestions"
 import { QuizInterface } from "@/components/quiz/QuizInterface"
+import { PracticeInterface } from "@/components/quiz/PracticeInterface"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, AlertCircle, Lock, Trophy, Star, ArrowRight, BookOpen, Clock, Target } from "lucide-react"
+import { Loader2, AlertCircle, Lock, Trophy, Star, ArrowRight, BookOpen, Clock, Target, Dumbbell } from "lucide-react"
 import type { QuizAttempt } from "@/types/quiz"
 import { cn } from "@/lib/utils"
 
@@ -22,6 +23,7 @@ interface QuizTabProps {
 
 export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = true, onClose, className }) => {
   const [isQuizActive, setIsQuizActive] = useState(false)
+  const [isPracticeActive, setIsPracticeActive] = useState(false)
   const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "standard" | "hard">("standard")
 
   const { data: questions, isLoading, error } = useQuizQuestions(subchapterId)
@@ -48,12 +50,22 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
     setIsQuizActive(true)
   }
 
+  // Start practice
+  const handleStartPractice = () => {
+    setIsPracticeActive(true)
+  }
+
   // Close quiz
   const handleCloseQuiz = () => {
     setIsQuizActive(false)
     if (onClose) {
       onClose()
     }
+  }
+
+  // Close practice
+  const handleClosePractice = () => {
+    setIsPracticeActive(false)
   }
 
   // Loading state
@@ -126,12 +138,24 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
   // Create a display list. If filtered is empty (e.g. no questions with that difficulty info), show all.
   const displayQuestions = filteredQuestions.length > 0 ? filteredQuestions : questions;
 
+  // Show practice interface if active
+  if (isPracticeActive) {
+    return (
+      <PracticeInterface
+        chapterId={subchapterId}
+        onClose={handleClosePractice}
+        className={className}
+      />
+    )
+  }
+
   // Show quiz interface if active
   if (isQuizActive) {
+    // For the new QuizInterface, we need a quizId
+    // Using subchapterId as quizId for demo purposes
     return (
       <QuizInterface
-        questions={displayQuestions}
-        onAnswerQuestion={handleAnswerQuestion}
+        quizId={subchapterId}
         onClose={handleCloseQuiz}
         className={className}
       />
@@ -243,24 +267,47 @@ export const QuizTab: React.FC<QuizTabProps> = ({ subchapterId, canAccessQuiz = 
       </div>
 
       {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-        {onClose && (
+      <div className="space-y-6">
+        {/* Primary Actions */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Button
-            variant="ghost"
-            onClick={onClose}
-            className="h-14 px-8 rounded-xl font-bold text-gray-500 hover:text-gray-900 hover:bg-gray-100 text-lg w-full sm:w-auto"
+            onClick={handleStartQuiz}
+            className="h-14 pl-10 pr-8 rounded-2xl bg-gradient-to-r from-eliza-blue to-eliza-purple hover:scale-105 active:scale-95 transition-all text-white font-bold text-lg shadow-xl shadow-eliza-blue/20 w-full sm:w-auto flex items-center justify-center gap-2 group"
           >
-            Maybe Later
+            Start Chapter Quiz
+            <Trophy className="w-5 h-5 group-hover:scale-110 transition-transform" />
           </Button>
-        )}
 
-        <Button
-          onClick={handleStartQuiz}
-          className="h-14 pl-10 pr-8 rounded-2xl bg-gradient-to-r from-eliza-blue to-eliza-purple hover:scale-105 active:scale-95 transition-all text-white font-bold text-lg shadow-xl shadow-eliza-blue/20 w-full sm:w-auto flex items-center justify-center gap-2 group"
-        >
-          Start Quiz
-          <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-        </Button>
+          <Button
+            onClick={handleStartPractice}
+            variant="outline"
+            className="h-14 pl-10 pr-8 rounded-2xl border-2 border-eliza-blue/30 hover:border-eliza-blue hover:bg-eliza-blue/5 text-eliza-blue font-bold text-lg w-full sm:w-auto flex items-center justify-center gap-2 group"
+          >
+            Practice Mode
+            <Dumbbell className="w-5 h-5 group-hover:scale-110 transition-transform" />
+          </Button>
+        </div>
+
+        {/* Practice Mode Info */}
+        <div className="text-center max-w-md mx-auto">
+          <p className="text-sm text-gray-500">
+            <strong className="text-gray-700">Practice Mode:</strong> Ungraded sandbox with instant feedback.
+            Perfect for building confidence before taking the quiz!
+          </p>
+        </div>
+
+        {/* Cancel Button */}
+        {onClose && (
+          <div className="text-center">
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              className="h-12 px-8 rounded-xl font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+            >
+              Maybe Later
+            </Button>
+          </div>
+        )}
       </div>
 
     </div>

@@ -1471,38 +1471,35 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     console.log(`🎯 Starting practice session for ${chapterId} with difficulty ${difficulty}`);
     await new Promise(resolve => setTimeout(resolve, 800));
 
-    // Generate 5 random questions based on difficulty
-    const questions: QuizQuestion[] = Array.from({ length: 5 }).map((_, i) => ({
-      id: `prac-q-${Date.now()}-${i}`,
-      subchapter_id: chapterId,
-      source_type: "ai_generated",
-      question_type: "multiple_choice",
-      difficulty: difficulty,
-      status: "published",
-      body: `[Practice ${difficulty}] Question ${i + 1}: Solve for x in the equation...`,
-      answer_explanation: "This is a practice explanation.",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      source_chunk_ids: [],
-      additional_metadata: {},
-      options: [
-        { id: "p1", label: "A", text: "Option A", is_correct: false, question_id: `prac-q-${Date.now()}-${i}` },
-        { id: "p2", label: "B", text: "Option B", is_correct: true, question_id: `prac-q-${Date.now()}-${i}` },
-        { id: "p3", label: "C", text: "Option C", is_correct: false, question_id: `prac-q-${Date.now()}-${i}` },
-        { id: "p4", label: "D", text: "Option D", is_correct: false, question_id: `prac-q-${Date.now()}-${i}` }
-      ]
-    }));
+    // Use the same question banks as quizzes (defined below in startQuiz method)
+    // For demo, we'll use quiz1Questions and filter/select based on difficulty
+    const allQuestions = this.getAllQuizQuestions();
+
+    // Filter by difficulty and take 5 initial questions
+    const filteredQuestions = allQuestions
+      .filter(q => q.difficulty === difficulty)
+      .slice(0, 5)
+      .map(q => ({
+        ...q,
+        id: `prac-${q.id}-${Date.now()}`, // Make unique for practice
+        options: q.options?.map(opt => ({
+          ...opt,
+          question_id: `prac-${q.id}-${Date.now()}`
+        }))
+      }));
 
     const sessionId = `prac-session-${Date.now()}`;
     const sessionState = {
       id: sessionId,
       chapter_id: chapterId,
-      questions: questions,
+      difficulty: difficulty,
+      questions: filteredQuestions,
       answers: {},
-      correct_count: 0
+      correct_count: 0,
+      allQuestionPool: allQuestions // Store for generating more
     };
 
-    // Store session state in a new map if not exists
+    // Store session state
     if (!this.mockQuizState.has("practice_sessions")) {
       this.mockQuizState.set("practice_sessions", new Map());
     }
@@ -1510,14 +1507,17 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     sessions.set(sessionId, sessionState);
     this.saveMockQuiz();
 
+    console.log(`📚 Practice session started with ${filteredQuestions.length} ${difficulty} questions`);
+
     return {
       session_id: sessionId,
-      questions: questions,
-      quiz_context_used: false
+      questions: filteredQuestions,
+      quiz_context_used: false // Could be true if we analyze past quiz mistakes
     };
   }
 
-  async submitPracticeAnswer(sessionId: string, questionId: string, answer: string): Promise<PracticeAnswerResponse> {
+  async answerPracticeQuestion(sessionId: string, questionId: string, answer: string): Promise<PracticeAnswerResponse> {
+    console.log(`📝 Answering practice question ${questionId}`);
     await new Promise(resolve => setTimeout(resolve, 500));
 
     const sessions = this.mockQuizState.get("practice_sessions") as Map<string, any>;
@@ -1526,22 +1526,236 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     if (!session) throw new Error("Session not found");
 
     const question = session.questions.find((q: QuizQuestion) => q.id === questionId);
+    if (!question) throw new Error("Question not found");
+
     const isCorrect = question.options?.find((o: any) => o.id === answer)?.is_correct || false;
+    const correctOption = question.options?.find((o: any) => o.is_correct);
 
     session.answers[questionId] = { answer, isCorrect };
     if (isCorrect) session.correct_count++;
 
     this.saveMockQuiz();
 
+    console.log(`${isCorrect ? '✅' : '❌'} Answer ${isCorrect ? 'correct' : 'incorrect'}. Session stats: ${session.correct_count}/${Object.keys(session.answers).length}`);
+
     return {
       is_correct: isCorrect,
-      explanation: isCorrect ? "Correct! Well done." : "Incorrect. Try to review the concept.",
-      correct_answer: question.options?.find((o: any) => o.is_correct)?.id,
+      explanation: question.answer_explanation || (isCorrect ? "Correct! Well done." : "Incorrect. Try to review the concept."),
+      correct_answer: correctOption?.text,
       questions_completed: Object.keys(session.answers).length,
-      total_correct: session.correct_count,
-      // For demo, if all done, explain it
-      next_question: Object.keys(session.answers).length < session.questions.length ? session.questions[Object.keys(session.answers).length] : undefined
+      total_correct: session.correct_count
     };
+  }
+
+  async generateMorePracticeQuestion(sessionId: string): Promise<{ question: QuizQuestion }> {
+    console.log(`➕ Generating more practice question for session ${sessionId}`);
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    const sessions = this.mockQuizState.get("practice_sessions") as Map<string, any>;
+    const session = sessions?.get(sessionId);
+
+    if (!session) throw new Error("Session not found");
+
+    // Get a question from the pool that hasn't been used yet
+    const usedQuestionIds = session.questions.map((q: QuizQuestion) => q.id.replace(/^prac-/, '').replace(/-\d+$/, ''));
+    const availableQuestions = session.allQuestionPool.filter(
+      (q: QuizQuestion) => !usedQuestionIds.includes(q.id) && q.difficulty === session.difficulty
+    );
+
+    let newQuestion: QuizQuestion;
+
+    if (availableQuestions.length > 0) {
+      // Pick a random unused question
+      const sourceQ = availableQuestions[Math.floor(Math.random() * availableQuestions.length)];
+      newQuestion = {
+        ...sourceQ,
+        id: `prac-${sourceQ.id}-${Date.now()}`,
+        options: sourceQ.options?.map(opt => ({
+          ...opt,
+          question_id: `prac-${sourceQ.id}-${Date.now()}`
+        }))
+      };
+    } else {
+      // All questions used, recycle one
+      const sourceQ = session.allQuestionPool.find((q: QuizQuestion) => q.difficulty === session.difficulty);
+      newQuestion = {
+        ...sourceQ,
+        id: `prac-${sourceQ.id}-${Date.now()}`,
+        options: sourceQ.options?.map(opt => ({
+          ...opt,
+          question_id: `prac-${sourceQ.id}-${Date.now()}`
+        }))
+      };
+    }
+
+    session.questions.push(newQuestion);
+    this.saveMockQuiz();
+
+    console.log(`✨ Generated new ${session.difficulty} question`);
+
+    return { question: newQuestion };
+  }
+
+  // Helper method to get all quiz questions for practice
+  private getAllQuizQuestions(): QuizQuestion[] {
+    // Return combined quiz questions from both sets
+    return [...this.getQuiz1Questions(), ...this.getQuiz2Questions()];
+  }
+
+  private getQuiz1Questions(): QuizQuestion[] {
+    return [
+      // Easy questions about integration basics
+      {
+        id: "q1_1",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "easy",
+        status: "published",
+        body: "What real-world analogy is used to explain integration?",
+        answer_explanation: "The chapter uses driving a car with a broken speedometer as an analogy.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt1_1_1", label: "A", text: "Flying a plane", is_correct: false, question_id: "q1_1" },
+          { id: "opt1_1_2", label: "B", text: "Driving a car with a broken speedometer", is_correct: true, question_id: "q1_1" },
+          { id: "opt1_1_3", label: "C", text: "Counting money", is_correct: false, question_id: "q1_1" },
+          { id: "opt1_1_4", label: "D", text: "Building a house", is_correct: false, question_id: "q1_1" }
+        ]
+      },
+      {
+        id: "q1_2",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "easy",
+        status: "published",
+        body: "What is a Riemann Sum used for?",
+        answer_explanation: "Riemann Sums approximate the area under a curve by dividing it into rectangles.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt1_2_1", label: "A", text: "Calculating derivatives", is_correct: false, question_id: "q1_2" },
+          { id: "opt1_2_2", label: "B", text: "Approximating area under a curve", is_correct: true, question_id: "q1_2" },
+          { id: "opt1_2_3", label: "C", text: "Solving linear equations", is_correct: false, question_id: "q1_2" },
+          { id: "opt1_2_4", label: "D", text: "Finding maximum values", is_correct: false, question_id: "q1_2" }
+        ]
+      },
+      // Standard difficulty
+      {
+        id: "q1_3",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard",
+        status: "published",
+        body: "What does the integral symbol ∫ represent?",
+        answer_explanation: "The integral symbol ∫ represents the sum of infinitely many infinitesimally small pieces.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt1_3_1", label: "A", text: "Multiplication", is_correct: false, question_id: "q1_3" },
+          { id: "opt1_3_2", label: "B", text: "Sum of infinitely small pieces", is_correct: true, question_id: "q1_3" },
+          { id: "opt1_3_3", label: "C", text: "Division", is_correct: false, question_id: "q1_3" },
+          { id: "opt1_3_4", label: "D", text: "Subtraction", is_correct: false, question_id: "q1_3" }
+        ]
+      },
+      // Hard questions
+      {
+        id: "q1_4",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "hard",
+        status: "published",
+        body: "Why is the Fundamental Theorem of Calculus important?",
+        answer_explanation: "The FTC connects differentiation and integration, showing they are inverse operations.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt1_4_1", label: "A", text: "It proves calculus exists", is_correct: false, question_id: "q1_4" },
+          { id: "opt1_4_2", label: "B", text: "It connects differentiation and integration", is_correct: true, question_id: "q1_4" },
+          { id: "opt1_4_3", label: "C", text: "It simplifies addition", is_correct: false, question_id: "q1_4" },
+          { id: "opt1_4_4", label: "D", text: "It defines limits", is_correct: false, question_id: "q1_4" }
+        ]
+      }
+    ];
+  }
+
+  private getQuiz2Questions(): QuizQuestion[] {
+    return [
+      // Easy
+      {
+        id: "q2_1",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "easy",
+        status: "published",
+        body: "What is an antiderivative?",
+        answer_explanation: "An antiderivative is a function whose derivative gives you the original function.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt2_1_1", label: "A", text: "The opposite of a derivative", is_correct: true, question_id: "q2_1" },
+          { id: "opt2_1_2", label: "B", text: "A type of medicine", is_correct: false, question_id: "q2_1" },
+          { id: "opt2_1_3", label: "C", text: "A geometric shape", is_correct: false, question_id: "q2_1" },
+          { id: "opt2_1_4", label: "D", text: "A calculus symbol", is_correct: false, question_id: "q2_1" }
+        ]
+      },
+      // Standard
+      {
+        id: "q2_2",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard",
+        status: "published",
+        body: "What is the Power Rule for integration?",
+        answer_explanation: "The Power Rule states that ∫x^n dx = x^(n+1)/(n+1) + C.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt2_2_1", label: "A", text: "∫x^n dx = nx^(n-1)", is_correct: false, question_id: "q2_2" },
+          { id: "opt2_2_2", label: "B", text: "∫x^n dx = x^(n+1)/(n+1) + C", is_correct: true, question_id: "q2_2" },
+          { id: "opt2_2_3", label: "C", text: "∫x^n dx = x^n", is_correct: false, question_id: "q2_2" },
+          { id: "opt2_2_4", label: "D", text: "∫x^n dx = e^x", is_correct: false, question_id: "q2_2" }
+        ]
+      },
+      // Hard
+      {
+        id: "q2_3",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "hard",
+        status: "published",
+        body: "Why do we add a constant C when integrating?",
+        answer_explanation: "We add C because derivatives of constants are zero, so we can't determine the original constant from the derivative alone.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt2_3_1", label: "A", text: "It makes the math easier", is_correct: false, question_id: "q2_3" },
+          { id: "opt2_3_2", label: "B", text: "Derivatives of constants are zero", is_correct: true, question_id: "q2_3" },
+          { id: "opt2_3_3", label: "C", text: "It's a mathematical tradition", is_correct: false, question_id: "q2_3" },
+          { id: "opt2_3_4", label: "D", text: "C represents cost", is_correct: false, question_id: "q2_3" }
+        ]
+      }
+    ];
   }
 
   // --- Mock Quiz Service ---
@@ -1552,69 +1766,430 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 800));
 
-    // Hardcoded questions for demo
-    const questions: QuizQuestion[] = [
+    // Determine which quiz set to use based on quizId
+    let questions: QuizQuestion[] = [];
+
+    // QUIZ SET 1: "What Exactly *Is* An Integral? (The Big Idea)"
+    const quiz1Questions: QuizQuestion[] = [
       {
-        id: "q1",
+        id: "q1_1",
         subchapter_id: "demo",
         source_type: "ai_generated",
         question_type: "multiple_choice",
         difficulty: "easy",
         status: "published",
-        body: "What is the primary goal of the 'Power Rule' in integration?",
-        answer_explanation: "The Power Rule is used to find the antiderivative of a function of the form x^n, by adding 1 to the exponent and dividing by the new exponent.",
+        body: "What real-world analogy is used to explain integration in this chapter?",
+        answer_explanation: "The chapter uses driving a car with a broken speedometer as an analogy, where you know your speed at different moments but want to find the total distance traveled.",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         source_chunk_ids: [],
         additional_metadata: {},
         options: [
-          { id: "opt1", question_id: "q1", label: "A", text: "To find the derivative", is_correct: false },
-          { id: "opt2", question_id: "q1", label: "B", text: "To find the area of a circle", is_correct: false },
-          { id: "opt3", question_id: "q1", label: "C", text: "To reverse the power rule of differentiation", is_correct: true },
-          { id: "opt4", question_id: "q1", label: "D", text: "To calculate slope", is_correct: false }
+          { id: "opt1_1", question_id: "q1_1", label: "A", text: "Flying a plane", is_correct: false },
+          { id: "opt1_2", question_id: "q1_1", label: "B", text: "Driving a car with a broken speedometer", is_correct: true },
+          { id: "opt1_3", question_id: "q1_1", label: "C", text: "Swimming in a pool", is_correct: false },
+          { id: "opt1_4", question_id: "q1_1", label: "D", text: "Climbing a mountain", is_correct: false }
         ]
       },
       {
-        id: "q2",
+        id: "q1_2",
         subchapter_id: "demo",
         source_type: "ai_generated",
         question_type: "multiple_choice",
-        difficulty: "standard" as Difficulty,
+        difficulty: "standard",
         status: "published",
-        body: "If f'(x) = 2x, what is f(x)?",
-        answer_explanation: "The antiderivative of 2x is x^2 + C, because the derivative of x^2 is 2x.",
+        body: "What is the main purpose of a Riemann Sum?",
+        answer_explanation: "A Riemann Sum approximates the total by adding up the areas of rectangles, pretending the rate was constant for very short intervals.",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         source_chunk_ids: [],
         additional_metadata: {},
         options: [
-          { id: "opt1", question_id: "q2", label: "A", text: "x^2 + C", is_correct: true },
-          { id: "opt2", question_id: "q2", label: "B", text: "2", is_correct: false },
-          { id: "opt3", question_id: "q2", label: "C", text: "x^2", is_correct: false }, // Tricky distractor
-          { id: "opt4", question_id: "q2", label: "D", text: "x + C", is_correct: false }
+          { id: "opt2_1", question_id: "q1_2", label: "A", text: "To find exact derivatives", is_correct: false },
+          { id: "opt2_2", question_id: "q1_2", label: "B", text: "To approximate area under a curve using rectangles", is_correct: true },
+          { id: "opt2_3", question_id: "q1_2", label: "C", text: "To calculate the slope of a tangent line", is_correct: false },
+          { id: "opt2_4", question_id: "q1_2", label: "D", text: "To measure the perimeter of shapes", is_correct: false }
         ]
       },
       {
-        id: "q3",
+        id: "q1_3",
         subchapter_id: "demo",
         source_type: "ai_generated",
         question_type: "multiple_choice",
         difficulty: "hard",
         status: "published",
-        body: "What does the 'C' represent in an indefinite integral?",
-        answer_explanation: "The constant of integration 'C' represents any constant value that disappears during differentiation, meaning there are infinite possible antiderivatives.",
+        body: "What happens as the width of rectangles in a Riemann Sum approaches zero?",
+        answer_explanation: "As the width approaches zero (infinitely small), the approximation becomes perfect and transforms into a definite integral - the jagged steps smooth out into a curve.",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         source_chunk_ids: [],
         additional_metadata: {},
         options: [
-          { id: "opt1", question_id: "q3", label: "A", text: "Circumference", is_correct: false },
-          { id: "opt2", question_id: "q3", label: "B", text: "Constant of Integration", is_correct: true },
-          { id: "opt3", question_id: "q3", label: "C", text: "Calculus", is_correct: false },
-          { id: "opt4", question_id: "q3", label: "D", text: "Continuous", is_correct: false }
+          { id: "opt3_1", question_id: "q1_3", label: "A", text: "The approximation becomes less accurate", is_correct: false },
+          { id: "opt3_2", question_id: "q1_3", label: "B", text: "Nothing changes", is_correct: false },
+          { id: "opt3_3", question_id: "q1_3", label: "C", text: "The approximation becomes perfect, forming a definite integral", is_correct: true },
+          { id: "opt3_4", question_id: "q1_3", label: "D", text: "The calculation becomes impossible", is_correct: false }
+        ]
+      },
+      {
+        id: "q1_4",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "easy",
+        status: "published",
+        body: "In integral notation ∫ₐᵇ f(x) dx, what does the 'dx' represent?",
+        answer_explanation: "The 'dx' represents the tiny, infinitely small slice of width - an infinitesimal change in x.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt4_1", question_id: "q1_4", label: "A", text: "The derivative of x", is_correct: false },
+          { id: "opt4_2", question_id: "q1_4", label: "B", text: "A tiny, infinitely small slice of width", is_correct: true },
+          { id: "opt4_3", question_id: "q1_4", label: "C", text: "The double derivative", is_correct: false },
+          { id: "opt4_4", question_id: "q1_4", label: "D", text: "The starting point", is_correct: false }
+        ]
+      },
+      {
+        id: "q1_5",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard",
+        status: "published",
+        body: "What does the integral symbol ∫ represent?",
+        answer_explanation: "The integral symbol ∫ looks like a stretched-out 'S' and stands for 'Sum' - it means to sum up everything.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt5_1", question_id: "q1_5", label: "A", text: "The slope of a line", is_correct: false },
+          { id: "opt5_2", question_id: "q1_5", label: "B", text: "Sum (it's a stretched S)", is_correct: true },
+          { id: "opt5_3", question_id: "q1_5", label: "C", text: "The starting point", is_correct: false },
+          { id: "opt5_4", question_id: "q1_5", label: "D", text: "Integration constant", is_correct: false }
+        ]
+      },
+      {
+        id: "q1_6",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard",
+        status: "published",
+        body: "In the notation ∫ₐᵇ f(x) dx, what do 'a' and 'b' represent?",
+        answer_explanation: "'a' and 'b' are the limits of integration - the start and end points of the interval we're integrating over.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt6_1", question_id: "q1_6", label: "A", text: "The constants of integration", is_correct: false },
+          { id: "opt6_2", question_id: "q1_6", label: "B", text: "The start and end points (limits)", is_correct: true },
+          { id: "opt6_3", question_id: "q1_6", label: "C", text: "Two different functions", is_correct: false },
+          { id: "opt6_4", question_id: "q1_6", label: "D", text: "Variables to be differentiated", is_correct: false }
+        ]
+      },
+      {
+        id: "q1_7",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "easy",
+        status: "published",
+        body: "Which of the following is NOT mentioned as a real-world application of integrals?",
+        answer_explanation: "The chapter mentions Physics (velocity to position), Engineering (center of mass), and Economics (total surplus), but not weather prediction.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt7_1", question_id: "q1_7", label: "A", text: "Physics - from velocity to position", is_correct: false },
+          { id: "opt7_2", question_id: "q1_7", label: "B", text: "Weather prediction", is_correct: true },
+          { id: "opt7_3", question_id: "q1_7", label: "C", text: "Engineering - calculating center of mass", is_correct: false },
+          { id: "opt7_4", question_id: "q1_7", label: "D", text: "Economics - finding total surplus", is_correct: false }
+        ]
+      },
+      {
+        id: "q1_8",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "hard",
+        status: "published",
+        body: "Integration is the tool we use to move from which world to which world?",
+        answer_explanation: "Integration moves us from the 'instantaneous' world of rates (derivatives) back to the 'accumulated' world of totals.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt8_1", question_id: "q1_8", label: "A", text: "From totals to rates", is_correct: false },
+          { id: "opt8_2", question_id: "q1_8", label: "B", text: "From rates (instantaneous) to totals (accumulated)", is_correct: true },
+          { id: "opt8_3", question_id: "q1_8", label: "C", text: "From algebra to geometry", is_correct: false },
+          { id: "opt8_4", question_id: "q1_8", label: "D", text: "From continuous to discrete", is_correct: false }
+        ]
+      },
+      {
+        id: "q1_9",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard",
+        status: "published",
+        body: "If you were driving at a constant 60 mph for 2 hours, what distance would you travel?",
+        answer_explanation: "At constant speed, distance = speed × time. So 60 mph × 2 hours = 120 miles. This is the simple case before we need integration.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt9_1", question_id: "q1_9", label: "A", text: "60 miles", is_correct: false },
+          { id: "opt9_2", question_id: "q1_9", label: "B", text: "120 miles", is_correct: true },
+          { id: "opt9_3", question_id: "q1_9", label: "C", text: "30 miles", is_correct: false },
+          { id: "opt9_4", question_id: "q1_9", label: "D", text: "240 miles", is_correct: false }
+        ]
+      },
+      {
+        id: "q1_10",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "hard",
+        status: "published",
+        body: "Why do we need integration for real-life situations like driving, instead of simple multiplication?",
+        answer_explanation: "Real life isn't constant - you speed up, slow down, stop for traffic. Integration handles these changing rates by adding up tiny amounts over time.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt10_1", question_id: "q1_10", label: "A", text: "Because multiplication is too simple", is_correct: false },
+          { id: "opt10_2", question_id: "q1_10", label: "B", text: "Because rates change (speed up, slow down, stop)", is_correct: true },
+          { id: "opt10_3", question_id: "q1_10", label: "C", text: "Because we need more precision", is_correct: false },
+          { id: "opt10_4", question_id: "q1_10", label: "D", text: "Because computers can't multiply", is_correct: false }
         ]
       }
     ];
+
+    // QUIZ SET 2: "Turning Intuition into Calculation: Unlocking the Power of Integration"
+    const quiz2Questions: QuizQuestion[] = [
+      {
+        id: "q2_1",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "easy",
+        status: "published",
+        body: "What is an antiderivative?",
+        answer_explanation: "An antiderivative is the result of 'undoing' differentiation - when you have the rate of change and want to find the original function.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt1_1", question_id: "q2_1", label: "A", text: "The derivative of a derivative", is_correct: false },
+          { id: "opt1_2", question_id: "q2_1", label: "B", text: "The result of undoing differentiation", is_correct: true },
+          { id: "opt1_3", question_id: "q2_1", label: "C", text: "The slope of a tangent line", is_correct: false },
+          { id: "opt1_4", question_id: "q2_1", label: "D", text: "A negative derivative", is_correct: false }
+        ]
+      },
+      {
+        id: "q2_2",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard",
+        status: "published",
+        body: "According to the Power Rule for integration, what is the integral of x^n (where n ≠ -1)?",
+        answer_explanation: "For integration, we add one to the exponent and divide by the new exponent: (x^(n+1))/(n+1) + C",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt2_1", question_id: "q2_2", label: "A", text: "n * x^(n-1)", is_correct: false },
+          { id: "opt2_2", question_id: "q2_2", label: "B", text: "(x^(n+1))/(n+1) + C", is_correct: true },
+          { id: "opt2_3", question_id: "q2_2", label: "C", text: "x^(n-1)/(n-1)", is_correct: false },
+          { id: "opt2_4", question_id: "q2_2", label: "D", text: "n * x^n", is_correct: false }
+        ]
+      },
+      {
+        id: "q2_3",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "hard",
+        status: "published",
+        body: "Why do we always add '+C' when finding an antiderivative?",
+        answer_explanation: "When you differentiate a constant, it disappears (becomes zero). So when integrating, there could have been any constant originally. The '+C' accounts for all possible original functions.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt3_1", question_id: "q2_3", label: "A", text: "Because C is required by mathematical law", is_correct: false },
+          { id: "opt3_2", question_id: "q2_3", label: "B", text: "Because constants disappear during differentiation", is_correct: true },
+          { id: "opt3_3", question_id: "q2_3", label: "C", text: "To make the answer look more complicated", is_correct: false },
+          { id: "opt3_4", question_id: "q2_3", label: "D", text: "Only for definite integrals", is_correct: false }
+        ]
+      },
+      {
+        id: "q2_4",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "easy",
+        status: "published",
+        body: "What is linearity in integration?",
+        answer_explanation: "Linearity means the integral of a sum is the sum of integrals, and the integral of a constant times a function is the constant times the integral.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt4_1", question_id: "q2_4", label: "A", text: "Integration only works on straight lines", is_correct: false },
+          { id: "opt4_2", question_id: "q2_4", label: "B", text: "Integrals play nicely with addition and constant multiples", is_correct: true },
+          { id: "opt4_3", question_id: "q2_4", label: "C", text: "The result is always a linear function", is_correct: false },
+          { id: "opt4_4", question_id: "q2_4", label: "D", text: "You can only integrate polynomials", is_correct: false }
+        ]
+      },
+      {
+        id: "q2_5",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard",
+        status: "published",
+        body: "What is the difference between indefinite and definite integrals?",
+        answer_explanation: "Indefinite integrals give a family of functions (with +C), while definite integrals give a single numerical answer representing exact area between two points.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt5_1", question_id: "q2_5", label: "A", text: "There is no difference", is_correct: false },
+          { id: "opt5_2", question_id: "q2_5", label: "B", text: "Indefinite has +C and a family of functions; definite gives one number", is_correct: true },
+          { id: "opt5_3", question_id: "q2_5", label: "C", text: "Indefinite is easier to calculate", is_correct: false },
+          { id: "opt5_4", question_id: "q2_5", label: "D", text: "Definite integrals cannot be calculated", is_correct: false }
+        ]
+      },
+      {
+        id: "q2_6",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard",
+        status: "published",
+        body: "How do you evaluate a definite integral using an antiderivative?",
+        answer_explanation: "Evaluate the antiderivative at the upper limit and subtract its value at the lower limit. This gives a single numerical answer.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt6_1", question_id: "q2_6", label: "A", text: "Add the values at both limits", is_correct: false },
+          { id: "opt6_2", question_id: "q2_6", label: "B", text: "Evaluate at upper limit minus value at lower limit", is_correct: true },
+          { id: "opt6_3", question_id: "q2_6", label: "C", text: "Multiply the limits together", is_correct: false },
+          { id: "opt6_4", question_id: "q2_6", label: "D", text: "Take the derivative twice", is_correct: false }
+        ]
+      },
+      {
+        id: "q2_7",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "easy",
+        status: "published",
+        body: "What does the Fundamental Theorem of Calculus connect?",
+        answer_explanation: "The FTC connects differentiation and integration, showing they are inverse operations - two sides of the same coin.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt7_1", question_id: "q2_7", label: "A", text: "Algebra and geometry", is_correct: false },
+          { id: "opt7_2", question_id: "q2_7", label: "B", text: "Differentiation and integration", is_correct: true },
+          { id: "opt7_3", question_id: "q2_7", label: "C", text: "Addition and subtraction", is_correct: false },
+          { id: "opt7_4", question_id: "q2_7", label: "D", text: "Limits and continuity", is_correct: false }
+        ]
+      },
+      {
+        id: "q2_8",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "hard",
+        status: "published",
+        body: "According to the chapter, what does the FTC allow us to do?",
+        answer_explanation: "The FTC lets us find net change (definite integral) by simply evaluating the antiderivative at start and end points - no complicated limits or infinite sums needed!",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt8_1", question_id: "q2_8", label: "A", text: "Calculate definite integrals using antiderivatives (no limits needed)", is_correct: true },
+          { id: "opt8_2", question_id: "q2_8", label: "B", text: "Avoid learning integration completely", is_correct: false },
+          { id: "opt8_3", question_id: "q2_8", label: "C", text: "Find derivatives faster", is_correct: false },
+          { id: "opt8_4", question_id: "q2_8", label: "D", text: "Prove all mathematical theorems", is_correct: false }
+        ]
+      },
+      {
+        id: "q2_9",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard",
+        status: "published",
+        body: "The antiderivative of 2x is x² + C. Why is this correct?",
+        answer_explanation: "Because the derivative of x² is 2x. We can verify an antiderivative by differentiating it - we should get back the original function.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt9_1", question_id: "q2_9", label: "A", text: "Because it looks similar", is_correct: false },
+          { id: "opt9_2", question_id: "q2_9", label: "B", text: "Because the derivative of x² is 2x", is_correct: true },
+          { id: "opt9_3", question_id: "q2_9", label: "C", text: "Because we multiply by 2", is_correct: false },
+          { id: "opt9_4", question_id: "q2_9", label: "D", text: "It's not correct", is_correct: false }
+        ]
+      },
+      {
+        id: "q2_10",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "hard",
+        status: "published",
+        body: "What is the main message of 'From Intuition to Calculation'?",
+        answer_explanation: "The chapter emphasizes that with antiderivatives and basic rules, we now have tools to calculate (not just guess) areas and reversals of rates - moving from observation to precise quantification.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt10_1", question_id: "q2_10", label: "A", text: "Integration is too difficult to understand", is_correct: false },
+          { id: "opt10_2", question_id: "q2_10", label: "B", text: "We now have tools to calculate (not guess) areas and reversals", is_correct: true },
+          { id: "opt10_3", question_id: "q2_10", label: "C", text: "Intuition is more important than calculation", is_correct: false },
+          { id: "opt10_4", question_id: "q2_10", label: "D", text: "Calculus should only be theoretical", is_correct: false }
+        ]
+      }
+    ];
+
+    // Select questions based on quizId (using modulo logic or chapter index)
+    // For demo, let's map quiz IDs to question sets
+    // If quizId contains "chapter-1" or is the first, use quiz1
+    // If quizId contains "chapter-2" or second chapter, use quiz2
+    // Default to quiz1 for backward compatibility
+
+    if (quizId.includes("chapter-2") || quizId.includes("topic-") && quizId.split("-")[1] === "2") {
+      questions = quiz2Questions;
+      console.log("📚 Using Quiz Set 2: Turning Intuition into Calculation");
+    } else {
+      questions = quiz1Questions;
+      console.log("📚 Using Quiz Set 1: What Exactly Is An Integral?");
+    }
 
     const attemptId = `attempt-${Date.now()}`;
     const attemptState = {
@@ -1712,7 +2287,7 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
           your_answer: q.options?.find((o: any) => o.id === ans?.answer_id)?.text || "No Answer",
           correct_answer: q.options?.find((o: any) => o.is_correct)?.text || "Unknown",
           explanation: q.answer_explanation,
-          recommended_difficulty: "medium"
+          recommended_difficulty: "standard"
         });
       }
     });
@@ -1733,45 +2308,253 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     // Generate a mock remedial question
     await new Promise(resolve => setTimeout(resolve, 600));
 
+    const remedialId = `rem-${Date.now()}`;
+
+    // Initialize remediation tracking state
+    if (!this.mockQuizState.has("remediation_tracking")) {
+      this.mockQuizState.set("remediation_tracking", new Map());
+    }
+    const tracking = this.mockQuizState.get("remediation_tracking") as Map<string, any>;
+
+    tracking.set(remedialId, {
+      attemptId,
+      questionId,
+      difficulty,
+      correctCount: 0,
+      required: 2,
+      currentQuestionNum: 1
+    });
+
+    this.saveMockQuiz();
+
+    // Generate first remedial question
+    const question = this.generateRemedialQuestion(1, difficulty, questionId);
+
     return {
-      remedial_id: `rem-${Date.now()}`,
+      remedial_id: remedialId,
       difficulty: difficulty,
       progress: { completed: 0, required: 2 },
-      question: {
-        id: `rem-q-${Date.now()}`,
-        subchapter_id: "remedial",
-        source_type: "ai_generated",
-        question_type: "multiple_choice",
-        difficulty: difficulty,
-        status: "published",
-        body: `[Remedial ${difficulty}] A similar question to master the concept: What creates the area under the curve?`,
-        answer_explanation: "Integration sums up infinite infinitesimals to create the area.",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        options: [
-          { id: "r1", label: "A", text: "Differentiation", is_correct: false },
-          { id: "r2", label: "B", text: "Integration", is_correct: true },
-          { id: "r3", label: "C", text: "Limits", is_correct: false },
-          { id: "r4", label: "D", text: "Algebra", is_correct: false }
+      question: question
+    };
+  }
+
+  // Helper to generate remedial questions specific to each main question
+  private generateRemedialQuestion(questionNum: number, difficulty: Difficulty, originalQuestionId: string): QuizQuestion {
+    const difficultyLabel = difficulty === "easy" ? "EASY" : difficulty === "standard" ? "MEDIUM" : "HARD";
+    const questionId = `rem-q-${Date.now()}-${questionNum}`;
+
+    // Remedial question banks for each original question
+    // Each question has 6 remedial variations (2 for each difficulty level)
+    const remedialBanks: Record<string, any> = {
+      // QUIZ 1 REMEDIAL QUESTIONS
+      "q1_1": { // Original: "What real-world analogy is used to explain integration?"
+        easy: [
+          {
+            body: `[${difficultyLabel}] What was the problem with the speedometer in the car analogy?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "It was too fast", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "It was broken", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "It was too slow", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "It was missing", is_correct: false }
+            ],
+            explanation: "The analogy uses a broken speedometer - you know your speed at different times but want to find total distance traveled."
+          },
+          {
+            body: `[${difficultyLabel}] In the car analogy, what are you trying to find?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "The speed at one moment", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "The total distance traveled", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "The time elapsed", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "The fuel consumption", is_correct: false }
+            ],
+            explanation: "You know speeds at various moments and want to find how far you've traveled total - this is what integration does."
+          }
+        ],
+        standard: [
+          {
+            body: `[${difficultyLabel}] Why is the car analogy helpful for understanding integration?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "Cars use calculus in their engines", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "It shows how rates (speed) accumulate into totals (distance)", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "Everyone drives cars", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "It simplifies the math", is_correct: false }
+            ],
+            explanation: "The analogy demonstrates integration's core purpose: converting changing rates into accumulated totals."
+          },
+          {
+            body: `[${difficultyLabel}] What does 'speed at various moments' represent in integration?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "The constant C", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "The function being integrated (the rate)", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "The limits of integration", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "The antiderivative", is_correct: false }
+            ],
+            explanation: "Speed at different times is like the function f(x) - the rate we're integrating to find the total."
+          }
+        ],
+        hard: [
+          {
+            body: `[${difficultyLabel}] How does varying speed in the car analogy relate to integration?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "It shows why simple multiplication doesn't work for changing rates", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "It demonstrates that integration handles non-constant functions by summing infinitesimals", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "It proves cars need speedometers", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "It shows integration is impossible", is_correct: false }
+            ],
+            explanation: "Varying speed (non-constant rate) requires integration - adding up infinitely many tiny distance=speed×time calculations."
+          },
+          {
+            body: `[${difficultyLabel}] If speed is constant at 50 mph for 3 hours, do you need integration?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "Yes, always", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "No, simple multiplication works (50×3=150 miles), but integration gives the same answer", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "No, integration only works for non-constant rates", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "Yes, multiplication is never sufficient", is_correct: false }
+            ],
+            explanation: "For constant rates, multiplication and integration give the same result. Integration's power shows with varying rates."
+          }
+        ]
+      },
+
+      // Generic fallback - used for all questions for simplicity in demo
+      "generic": {
+        easy: [
+          {
+            body: `[${difficultyLabel}] What is the basic idea behind integration?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "Finding the slope", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "Adding up tiny pieces to find a total", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "Multiplying variables", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "Dividing functions", is_correct: false }
+            ],
+            explanation: "Integration is about summing up infinitely many tiny pieces to find totals like area or accumulated change."
+          },
+          {
+            body: `[${difficultyLabel}] Which symbol represents integration?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "d/dx", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "∫ (integral sign)", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "Σ (sigma)", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "lim", is_correct: false }
+            ],
+            explanation: "The integral sign ∫ represents integration - it looks like a stretched 'S' for 'Sum'."
+          }
+        ],
+        standard: [
+          {
+            body: `[${difficultyLabel}] What is the relationship between differentiation and integration?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "They are unrelated", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "They are inverse operations", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "They are the same operation", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "Integration is faster", is_correct: false }
+            ],
+            explanation: "Integration and differentiation are inverse operations - integration undoes differentiation and vice versa."
+          },
+          {
+            body: `[${difficultyLabel}] How does the Power Rule work for integration?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "Subtract 1 from exponent, multiply", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "Add 1 to exponent, divide by new exponent", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "Square the exponent", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "Keep exponent the same", is_correct: false }
+            ],
+            explanation: "For the Power Rule in integration, we add 1 to the exponent and divide by that new exponent."
+          }
+        ],
+        hard: [
+          {
+            body: `[${difficultyLabel}] Why do we add '+C' to indefinite integrals?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "It's tradition", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "Constants vanish when differentiating, so any constant could have been there", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "To make it harder", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "Only for polynomials", is_correct: false }
+            ],
+            explanation: "When differentiating, constants become zero and disappear. So when integrating, we add '+C' to represent any possible constant that could have been in the original function."
+          },
+          {
+            body: `[${difficultyLabel}] What does a definite integral calculate?`,
+            options: [
+              { id: `rem${questionNum}_1`, question_id: questionId, label: "A", text: "A family of functions", is_correct: false },
+              { id: `rem${questionNum}_2`, question_id: questionId, label: "B", text: "A specific numerical value (like area between two points)", is_correct: true },
+              { id: `rem${questionNum}_3`, question_id: questionId, label: "C", text: "The derivative", is_correct: false },
+              { id: `rem${questionNum}_4`, question_id: questionId, label: "D", text: "An approximation only", is_correct: false }
+            ],
+            explanation: "A definite integral gives us one specific number - often representing the exact area under a curve between two limits."
+          }
         ]
       }
+    };
+
+    // Select the appropriate remedial bank (use specific bank if exists, otherwise generic)
+    const bank = remedialBanks[originalQuestionId] || remedialBanks["generic"];
+    const questionPool = bank[difficulty] || bank["standard"];
+    const selected = questionPool[(questionNum - 1) % questionPool.length];
+
+    return {
+      id: questionId,
+      subchapter_id: "remedial",
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: difficulty,
+      status: "published",
+      body: selected.body,
+      answer_explanation: selected.explanation,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: selected.options
     };
   }
 
   async submitRemedialAnswer(remedialId: string, answer: string): Promise<any> {
     await new Promise(resolve => setTimeout(resolve, 500));
-    const isCorrect = answer === "r2"; // Hardcoded correct answer for demo
+
+    const tracking = this.mockQuizState.get("remediation_tracking") as Map<string, any>;
+    const remedialState = tracking?.get(remedialId);
+
+    if (!remedialState) {
+      throw new Error("Remediation session not found");
+    }
+
+    // Check if answer is correct
+    const isCorrect = answer.includes("_2"); // Our correct answers are always option 2
+
+    // Update progress
+    if (isCorrect) {
+      remedialState.correctCount++;
+    }
+
+    const completed = remedialState.correctCount;
+    const required = remedialState.required;
+    const remediationComplete = completed >= required;
+
+    // Generate next question if needed
+    let nextQuestion = null;
+    if (!remediationComplete) {
+      remedialState.currentQuestionNum++;
+      nextQuestion = this.generateRemedialQuestion(
+        remedialState.currentQuestionNum,
+        remedialState.difficulty,
+        remedialState.questionId
+      );
+    }
+
+    this.saveMockQuiz();
 
     return {
       is_correct: isCorrect,
-      explanation: isCorrect ? "Excellent! You got it." : "Not quite. Integration is the 'summing' process.",
+      explanation: isCorrect ?
+        "Excellent! You got it right." :
+        "Not quite. Let's try another question to reinforce this concept.",
       progress: {
-        completed: isCorrect ? 1 : 0, // Mock progress
-        required: 2
+        completed: completed,
+        required: required
       },
-      // For demo, just finish after one correct or just show completion
-      remedial_completed: isCorrect, // Simplification for demo
-      next_question: null // No next question for this simple demo
+      remedial_completed: remediationComplete,
+      next_question: nextQuestion
     };
   }
 

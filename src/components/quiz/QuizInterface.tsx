@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { apiClient } from "@/lib/api"
-import { QuizQuestion, QuizSummary, AnswerResponse, RemedialQuestionResponse, SubmitRemedialAnswerResponse, Difficulty, PracticeSession, PracticeAnswerResponse } from "@/types/quiz"
+import { QuizQuestion, QuizSummary, AnswerResponse, RemedialQuestionResponse, SubmitRemedialAnswerResponse, Difficulty } from "@/types/quiz"
 import { toast } from "@/hooks/use-toast"
 
 interface QuizInterfaceProps {
@@ -15,7 +15,7 @@ interface QuizInterfaceProps {
   className?: string
 }
 
-type QuizPhase = "LOADING" | "START_SCREEN" | "QUESTION" | "FEEDBACK" | "SUMMARY" | "REMEDIATION_SELECT" | "REMEDIATION_QUESTION" | "REMEDIATION_FEEDBACK" | "COMPLETED" | "PRACTICE_SETUP" | "PRACTICE_QUESTION" | "PRACTICE_FEEDBACK"
+type QuizPhase = "LOADING" | "QUESTION" | "FEEDBACK" | "SUMMARY" | "REMEDIATION_SELECT" | "REMEDIATION_QUESTION" | "REMEDIATION_FEEDBACK" | "COMPLETED"
 
 export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   quizId,
@@ -24,7 +24,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   className,
 }) => {
   // State
-  const [phase, setPhase] = useState<QuizPhase>("START_SCREEN")
+  const [phase, setPhase] = useState<QuizPhase>("LOADING")
   const [attemptId, setAttemptId] = useState<string | null>(initialAttemptId || null)
 
   // Question State
@@ -44,14 +44,16 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   const [remedialQuestion, setRemedialQuestion] = useState<RemedialQuestionResponse | null>(null)
   const [remedialFeedback, setRemedialFeedback] = useState<SubmitRemedialAnswerResponse | null>(null)
   const [currentWrongQuestionIndex, setCurrentWrongQuestionIndex] = useState(0)
+  const [remedialProgress, setRemedialProgress] = useState({ completed: 0, required: 2 })
 
-  // Practice State
-  const [practiceSession, setPracticeSession] = useState<PracticeSession | null>(null)
-  const [practiceFeedback, setPracticeFeedback] = useState<PracticeAnswerResponse | null>(null)
+  // --- Auto-start quiz on mount ---
+  useEffect(() => {
+    handleStartQuiz()
+  }, [])
 
   // --- Handlers ---
 
-  const handleStartQuizFlow = async () => {
+  const handleStartQuiz = async () => {
     setPhase("LOADING")
     try {
       if (attemptId) {
@@ -81,64 +83,9 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
     } catch (error) {
       console.error("Failed to start quiz", error)
       toast({ title: "Error", description: "Failed to start quiz", variant: "destructive" })
-      setPhase("START_SCREEN")
+      if (onClose) onClose()
     }
   }
-
-  const handleStartPracticeFlow = () => {
-    setPhase("PRACTICE_SETUP")
-  }
-
-  const handleStartPracticeSession = async (difficulty: Difficulty) => {
-    setPhase("LOADING")
-    try {
-      const session = await apiClient.startPracticeSession(quizId, difficulty)
-      setPracticeSession(session)
-      setCurrentQuestion(session.questions[0])
-      setQuestionIndex(0)
-      setTotalQuestions(session.questions.length)
-      setPhase("PRACTICE_QUESTION")
-    } catch (error) {
-      console.error("Failed to start practice", error)
-      toast({ title: "Error", description: "Failed to start practice", variant: "destructive" })
-      setPhase("START_SCREEN")
-    }
-  }
-
-  const handleSubmitPractice = async () => {
-    if (!practiceSession || !selectedOption || !currentQuestion) return
-    setIsSubmitting(true)
-    try {
-      const response = await apiClient.submitPracticeAnswer(practiceSession.session_id, currentQuestion.id, selectedOption)
-      setPracticeFeedback(response)
-      setPhase("PRACTICE_FEEDBACK")
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to submit answer", variant: "destructive" })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleNextPractice = () => {
-    if (!practiceFeedback || !practiceSession) return
-    setSelectedOption(null)
-    setPracticeFeedback(null)
-
-    const nextIdx = questionIndex + 1
-    if (nextIdx < practiceSession.questions.length) {
-      setCurrentQuestion(practiceSession.questions[nextIdx])
-      setQuestionIndex(nextIdx)
-      setPhase("PRACTICE_QUESTION")
-    } else {
-      // End of practice session
-      setPhase("COMPLETED") // Or custom practice summary
-    }
-  }
-
-  // --- Handlers ---
-
-
-  // --- Handlers ---
 
   const handleSubmitAnswer = async () => {
     if (!attemptId || !currentQuestion || !selectedOption) return
@@ -237,6 +184,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
     try {
       const response = await apiClient.submitRemedialAnswer(remedialQuestion.remedial_id, selectedOption)
       setRemedialFeedback(response)
+      setRemedialProgress(response.progress || { completed: 0, required: 2 })
       setPhase("REMEDIATION_FEEDBACK")
     } catch (error) {
       toast({ title: "Error", description: "Failed to submit answer", variant: "destructive" })
@@ -249,25 +197,43 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
     if (!remedialFeedback) return
 
     setSelectedOption(null)
-    setRemedialFeedback(null)
 
     if (remedialFeedback.next_question) {
-      // Continue same remedial set
-      if (remedialQuestion) {
-        setRemedialQuestion(prev => prev ? ({ ...prev, question: remedialFeedback.next_question! }) : null)
-        setPhase("REMEDIATION_QUESTION")
-      }
+      // Continue same remedial set - need more correct answers
+      setRemedialQuestion(prev => prev ? ({
+        ...prev,
+        question: remedialFeedback.next_question!,
+        progress: remedialFeedback.progress
+      }) : null)
+      setRemedialFeedback(null)
+      setPhase("REMEDIATION_QUESTION")
     } else if (remedialFeedback.remedial_completed) {
-      // This concept is done. Move to next wrong question.
+      // This concept is done (2/2 correct). Move to next wrong question.
+      setRemedialFeedback(null)
+      setRemedialProgress({ completed: 0, required: 2 }) // Reset progress for next question
+
       const wrongQuestions = summary?.wrong_questions || []
       if (currentWrongQuestionIndex < wrongQuestions.length - 1) {
+        // Show success message before moving to next question
+        toast({
+          title: "Concept Mastered! 🎉",
+          description: `Moving to question ${currentWrongQuestionIndex + 2} of ${wrongQuestions.length}`,
+          duration: 2000
+        })
         setCurrentWrongQuestionIndex(prev => prev + 1)
         setPhase("REMEDIATION_SELECT")
       } else {
+        // All remediation complete!
+        toast({
+          title: "All Remediation Complete! 🏆",
+          description: "You've mastered all the concepts!",
+          duration: 3000
+        })
         setPhase("COMPLETED")
       }
     } else {
       // Default fallback
+      setRemedialFeedback(null)
       setPhase("COMPLETED")
     }
   }
@@ -309,157 +275,163 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
     )
   }
 
-  if (phase === "START_SCREEN") {
-    return (
-      <div className={cn("fixed inset-0 bg-gray-50/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4", className)}>
-        <Card className="w-full max-w-md p-8 space-y-8 shadow-2xl rounded-3xl border border-gray-100">
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 bg-gradient-to-tr from-eliza-blue to-purple-500 rounded-2xl mx-auto flex items-center justify-center shadow-lg transform rotate-3 mb-4">
-              <Award className="w-8 h-8 text-white" />
-            </div>
-            <h2 className="text-3xl font-brand font-bold text-gray-900">Ready to learn?</h2>
-            <p className="text-gray-500">Choose how you want to test your knowledge.</p>
-          </div>
-
-          <div className="space-y-4">
-            <button onClick={handleStartQuizFlow} className="w-full group relative p-6 bg-white border-2 border-gray-100 hover:border-eliza-blue rounded-2xl transition-all shadow-sm hover:shadow-md text-left">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                  <Trophy className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 group-hover:text-eliza-blue transition-colors">Take Quiz</h3>
-                  <p className="text-sm text-gray-500">Scored assessment with feedback</p>
-                </div>
-                <ArrowRight className="ml-auto w-5 h-5 text-gray-300 group-hover:text-eliza-blue transform group-hover:translate-x-1 transition-all" />
-              </div>
-            </button>
-
-            <button onClick={handleStartPracticeFlow} className="w-full group relative p-6 bg-white border-2 border-gray-100 hover:border-green-500 rounded-2xl transition-all shadow-sm hover:shadow-md text-left">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold">
-                  <Target className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 group-hover:text-green-600 transition-colors">Practice Mode</h3>
-                  <p className="text-sm text-gray-500">Ungraded questions to build skills</p>
-                </div>
-                <ArrowRight className="ml-auto w-5 h-5 text-gray-300 group-hover:text-green-600 transform group-hover:translate-x-1 transition-all" />
-              </div>
-            </button>
-
-            <Button variant="ghost" onClick={onClose} className="w-full text-gray-400 hover:text-gray-600">
-              Cancel
-            </Button>
-          </div>
-        </Card>
-      </div>
-    )
-  }
-
-  if (phase === "PRACTICE_SETUP") {
-    return (
-      <div className={cn("fixed inset-0 bg-gray-50/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4", className)}>
-        <Card className="w-full max-w-lg p-8 space-y-6 shadow-2xl rounded-3xl">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Practice Difficulty</h2>
-            <p className="text-gray-500">Select a level to start your practice session.</p>
-          </div>
-          <div className="grid grid-cols-1 gap-3">
-            {[
-              { id: "easy", label: "Easy", icon: Target, desc: "Start with basics" },
-              { id: "standard", label: "Standard", icon: Star, desc: "Standard difficulty" },
-              { id: "hard", label: "Challenge", icon: Trophy, desc: "Test your limits" }
-            ].map((lvl) => {
-              const Icon = lvl.icon
-              return (
-                <button
-                  key={lvl.id}
-                  onClick={() => handleStartPracticeSession(lvl.id as any)}
-                  className="flex items-center gap-4 p-4 rounded-2xl border-2 border-gray-100 hover:border-eliza-blue hover:bg-eliza-blue/5 transition-all text-left group"
-                >
-                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                    <Icon className="w-6 h-6 text-eliza-blue" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-gray-900">{lvl.label}</div>
-                    <div className="text-sm text-gray-500">{lvl.desc}</div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-          <Button variant="ghost" onClick={() => setPhase("START_SCREEN")}>Back</Button>
-        </Card>
-      </div>
-    )
-  }
-
   // 1. SUMMARY VIEW
   if (phase === "SUMMARY") {
     const wrongCount = summary?.wrong_questions.length || 0
+    const wrongQuestions = summary?.wrong_questions || []
 
     return (
-      <div className={cn("fixed inset-0 bg-gray-50 z-50 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95", className)}>
-        <Card className="w-full max-w-lg p-8 text-center space-y-6 shadow-2xl rounded-3xl">
-          <AlertCircle className="w-20 h-20 text-eliza-orange mx-auto mb-4" />
-          <h2 className="text-3xl font-brand font-bold text-gray-900">Quiz Completed</h2>
+      <div className={cn("fixed inset-0 bg-gray-50 z-50 flex flex-col overflow-y-auto p-4 animate-in fade-in zoom-in-95", className)}>
+        <div className="w-full max-w-3xl mx-auto my-8 space-y-6">
+          {/* Header Card */}
+          <Card className="p-8 text-center space-y-6 shadow-2xl rounded-3xl">
+            <AlertCircle className="w-20 h-20 text-eliza-orange mx-auto mb-4" />
+            <h2 className="text-3xl font-brand font-bold text-gray-900">Quiz Completed</h2>
 
-          <div className="py-4 border-y border-gray-100">
-            <div className="flex justify-center gap-8">
-              <div>
-                <div className="text-4xl font-bold text-gray-900">{summary?.score}</div>
-                <div className="text-xs uppercase text-gray-500">Score</div>
-              </div>
-              <div>
-                <div className="text-4xl font-bold text-gray-900">{summary?.percentage}%</div>
-                <div className="text-xs uppercase text-gray-500">Accuracy</div>
+            <div className="py-4 border-y border-gray-100">
+              <div className="flex justify-center gap-8">
+                <div>
+                  <div className="text-4xl font-bold text-gray-900">{summary?.score}</div>
+                  <div className="text-xs uppercase text-gray-500">Score</div>
+                </div>
+                <div>
+                  <div className="text-4xl font-bold text-gray-900">{summary?.percentage}%</div>
+                  <div className="text-xs uppercase text-gray-500">Accuracy</div>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="bg-red-50 p-4 rounded-xl text-left">
-            <h3 className="font-bold text-red-900 mb-2">Remediation Needed</h3>
-            <p className="text-red-700 text-sm mb-2">
-              You missed <strong>{wrongCount}</strong> questions. To master this topic, let's work through some practice exercises.
-            </p>
-          </div>
+            {wrongCount > 0 && (
+              <div className="bg-red-50 p-4 rounded-xl text-left">
+                <h3 className="font-bold text-red-900 mb-2">Remediation Needed</h3>
+                <p className="text-red-700 text-sm mb-2">
+                  You missed <strong>{wrongCount}</strong> {wrongCount === 1 ? 'question' : 'questions'}. Review them below and start remediation to master this topic.
+                </p>
+              </div>
+            )}
+          </Card>
 
-          <Button onClick={startRemediation} className="w-full h-12 text-lg rounded-xl bg-eliza-blue hover:bg-eliza-blue/90 text-white shadow-lg">
-            Start Remediation
-            <ArrowRight className="ml-2 w-5 h-5" />
-          </Button>
-        </Card>
+          {/* Wrong Questions List */}
+          {wrongCount > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-xl font-bold text-gray-900 px-2">Questions to Review</h3>
+              {wrongQuestions.map((wq, idx) => (
+                <Card key={wq.question_id} className="p-6 space-y-4 border-l-4 border-red-500 shadow-md">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-red-100 text-red-700 font-bold flex items-center justify-center flex-shrink-0 mt-1">
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 space-y-3">
+                      <h4 className="font-semibold text-gray-900 text-lg">{wq.question_text}</h4>
+
+                      <div className="grid gap-2 text-sm">
+                        <div className="flex items-start gap-2">
+                          <X className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <span className="text-gray-500">Your answer: </span>
+                            <span className="text-red-700 font-medium">{wq.your_answer}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Check className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <span className="text-gray-500">Correct answer: </span>
+                            <span className="text-green-700 font-medium">{wq.correct_answer}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <p className="text-sm text-gray-700">{wq.explanation}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <Target className="w-4 h-4" />
+                        <span>Recommended: <span className="font-medium capitalize">{wq.recommended_difficulty}</span> difficulty for remediation</span>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Start Remediation Button */}
+          {wrongCount > 0 && (
+            <Card className="p-6 sticky bottom-4 shadow-2xl bg-white/95 backdrop-blur-sm">
+              <Button onClick={startRemediation} className="w-full h-12 text-lg rounded-xl bg-eliza-blue hover:bg-eliza-blue/90 text-white shadow-lg">
+                Start Remediation
+                <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+            </Card>
+          )}
+        </div>
       </div>
     )
   }
 
   // 2. COMPLETED VIEW (Final)
   if (phase === "COMPLETED") {
+    const hadRemediation = (summary?.wrong_questions.length || 0) > 0
+
     return (
-      <div className={cn("fixed inset-0 bg-gray-50 z-50 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95", className)}>
-        <Card className="w-full max-w-md p-8 text-center space-y-6 shadow-2xl border-t-8 border-eliza-purple rounded-3xl">
-          <Award className="w-20 h-20 text-eliza-purple mx-auto mb-4" />
-          <h2 className="text-3xl font-brand font-bold text-gray-900">All Done!</h2>
-          <p className="text-gray-600">You've completed the quiz and any necessary remediation.</p>
+      <div className={cn("fixed inset-0 bg-gradient-to-br from-eliza-purple/10 via-white to-eliza-blue/10 z-50 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-500", className)}>
+        <Card className="w-full max-w-md p-8 text-center space-y-6 shadow-2xl border-t-8 border-eliza-purple rounded-3xl relative overflow-hidden">
+          {/* Celebration background effect */}
+          <div className="absolute inset-0 bg-gradient-to-br from-eliza-purple/5 to-eliza-blue/5 pointer-events-none" />
 
-          <div className="py-6 bg-gray-50 rounded-2xl border border-gray-100">
-            <div className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-eliza-purple to-eliza-blue">
-              {summary?.percentage || 100}%
+          <div className="relative z-10 space-y-6">
+            <div className="animate-bounce">
+              <Award className="w-24 h-24 text-eliza-purple mx-auto mb-4 drop-shadow-lg" />
             </div>
-            <p className="text-sm text-gray-400 font-bold uppercase tracking-wider mt-2">Final Score</p>
+
+            <div>
+              <h2 className="text-4xl font-brand font-bold text-gray-900 mb-2">
+                {hadRemediation ? "Quiz Mastered! 🎉" : "Perfect Score! ✨"}
+              </h2>
+              <p className="text-gray-600">
+                {hadRemediation
+                  ? "You've completed the quiz and mastered all concepts through remediation!"
+                  : "You've aced the quiz on your first try!"}
+              </p>
+            </div>
+
+            <div className="py-8 bg-gradient-to-br from-gray-50 to-white rounded-2xl border border-gray-100 shadow-inner">
+              <div className="text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-eliza-purple via-eliza-blue to-eliza-purple animate-pulse">
+                {summary?.percentage || 100}%
+              </div>
+              <p className="text-sm text-gray-400 font-bold uppercase tracking-wider mt-2">Final Score</p>
+
+              {summary && (
+                <div className="mt-4 flex justify-center gap-6 text-sm text-gray-600">
+                  <div>
+                    <div className="font-bold text-xl text-gray-900">{summary.score}</div>
+                    <div className="text-xs">Correct</div>
+                  </div>
+                  <div className="w-px bg-gray-200" />
+                  <div>
+                    <div className="font-bold text-xl text-gray-900">{summary.total}</div>
+                    <div className="text-xs">Total</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {hadRemediation && (
+              <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+                <Trophy className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                <p className="text-sm text-green-800 font-medium">
+                  You demonstrated growth mindset by working through challenging concepts!
+                </p>
+              </div>
+            )}
+
+            {onClose && (
+              <Button onClick={onClose} className="w-full h-12 text-lg rounded-xl bg-gradient-to-r from-eliza-purple to-eliza-blue hover:opacity-90 text-white shadow-lg transform hover:scale-105 transition-transform">
+                Close Quiz
+              </Button>
+            )}
           </div>
-
-          {onClose && (
-            <div className="space-y-3">
-              <Button onClick={() => setPhase("PRACTICE_SETUP")} className="w-full h-12 text-lg rounded-xl bg-white text-eliza-blue border-2 border-eliza-blue hover:bg-eliza-blue/5 shadow-none">
-                <Target className="w-5 h-5 mr-2" /> Practice More
-              </Button>
-              <Button onClick={onClose} className="w-full h-12 text-lg rounded-xl bg-gray-900 hover:bg-gray-800 text-white shadow-lg">
-                Finish Review
-              </Button>
-            </div>
-          )}
         </Card>
       </div>
     )
@@ -518,10 +490,9 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
     )
   }
 
-  // 4. ACTIVE QUESTION (Normal, Remedial, or Practice)
-  const isPractice = phase === "PRACTICE_QUESTION" || phase === "PRACTICE_FEEDBACK"
-  const activeQ = isPractice ? currentQuestion : (phase === "QUESTION" || phase === "FEEDBACK" ? currentQuestion : remedialQuestion?.question)
-  const activeFeedback = isPractice ? practiceFeedback : (phase === "FEEDBACK" ? answerFeedback : remedialFeedback)
+  // 4. ACTIVE QUESTION (Normal or Remedial)
+  const activeQ = (phase === "QUESTION" || phase === "FEEDBACK") ? currentQuestion : remedialQuestion?.question
+  const activeFeedback = (phase === "FEEDBACK") ? answerFeedback : remedialFeedback
 
   if (!activeQ) return null; // Should not happen
 
@@ -539,7 +510,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
             </Button>
             <div className="flex flex-col">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                {phase.includes("REMEDIATION") ? "Remediation" : (isPractice ? "Practice Session" : `Question ${questionIndex + 1}`)}
+                {phase.includes("REMEDIATION") ? `Remediation ${remedialProgress.completed}/${remedialProgress.required}` : `Question ${questionIndex + 1} of ${totalQuestions}`}
               </span>
             </div>
           </div>
@@ -563,7 +534,18 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
             <div className="grid gap-4">
               {options.map((option) => {
                 const isSelected = selectedOption === option.id
-                const isCorrectAnswer = activeFeedback && activeFeedback.correct_answer === option.id
+
+                // For AnswerResponse, use correct_answer. For remedial, find from options.
+                let isCorrectAnswer = false
+                if (activeFeedback) {
+                  if ('correct_answer' in activeFeedback && activeFeedback.correct_answer) {
+                    isCorrectAnswer = activeFeedback.correct_answer === option.id
+                  } else {
+                    // Remedial feedback - find correct answer from options
+                    const correctOpt = activeQ.options?.find(o => o.is_correct)
+                    isCorrectAnswer = correctOpt?.id === option.id
+                  }
+                }
 
                 // Determine variant
                 let variantClass = "bg-white border-2 border-gray-200 text-gray-700 hover:border-eliza-blue/50 hover:bg-eliza-blue/5"
@@ -632,7 +614,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
                     </p>
                   </div>
                   <Button
-                    onClick={isPractice ? handleNextPractice : (phase === "FEEDBACK" ? handleNextQuestion : handleNextRemedial)}
+                    onClick={phase === "FEEDBACK" ? handleNextQuestion : handleNextRemedial}
                     className={cn(
                       "h-12 px-8 rounded-xl font-bold text-lg shadow-lg active:scale-95 transition-transform shrink-0",
                       isCorrect ? "bg-white text-green-700 hover:bg-green-50" : "bg-red-600 text-white hover:bg-red-700"
@@ -645,7 +627,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
             ) : (
               <div className="flex justify-end">
                 <Button
-                  onClick={isPractice ? handleSubmitPractice : (phase === "QUESTION" ? handleSubmitAnswer : handleSubmitRemedial)}
+                  onClick={phase === "QUESTION" ? handleSubmitAnswer : handleSubmitRemedial}
                   disabled={!selectedOption || isSubmitting}
                   className={cn(
                     "h-14 px-10 rounded-2xl font-bold text-lg shadow-xl transition-all duration-300",
