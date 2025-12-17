@@ -131,6 +131,7 @@ export interface Chapter {
   created_at: string
   subchapters?: Subchapter[]
   is_published?: boolean
+  has_final_quiz?: boolean
 }
 
 export interface Subchapter {
@@ -294,6 +295,7 @@ export class ApiClient {
     this.loadMockState();
     this.loadMockStudents();
     this.loadMockContent();
+    this.loadMockQuiz();
   }
 
   private async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -462,6 +464,11 @@ export class ApiClient {
   private mockContentState = new Map<string, ContentSection[]>();
   private MOCK_CONTENT_KEY = "aula_mock_content_state";
 
+  // Mock Quiz State
+  // Key: attemptId or sessionId, Value: Quiz/Practice state
+  private mockQuizState = new Map<string, any>();
+  private MOCK_QUIZ_KEY = "aula_mock_quiz_state";
+
   private saveMockState() {
     if (typeof window === "undefined") return;
     try {
@@ -532,6 +539,340 @@ export class ApiClient {
     } catch (e) {
       console.error("Failed to load mock content", e);
     }
+  }
+
+  private saveMockQuiz() {
+    if (typeof window === "undefined") return;
+    try {
+      const obj = Object.fromEntries(this.mockQuizState);
+      localStorage.setItem(this.MOCK_QUIZ_KEY, JSON.stringify(obj));
+    } catch (e) {
+      console.error("Failed to save mock quiz", e);
+    }
+  }
+
+  private loadMockQuiz() {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem(this.MOCK_QUIZ_KEY);
+      if (stored) {
+        const obj = JSON.parse(stored);
+        this.mockQuizState = new Map(Object.entries(obj));
+        console.log("🧠 Loaded mock quiz state", this.mockQuizState);
+      }
+    } catch (e) {
+      console.error("Failed to load mock quiz", e);
+    }
+  }
+
+  // Generate realistic Integrals quiz questions
+  private getIntegralsQuizQuestions(subchapterId: string): QuizQuestion[] {
+    const generateId = () => 'q-' + Math.random().toString(36).substr(2, 9);
+
+    // Question 1
+    const q1Id = generateId();
+    const question1: QuizQuestion = {
+      id: q1Id,
+      subchapter_id: subchapterId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "easy",
+      status: "published",
+      body: "What is the primary goal of integration in calculus?",
+      answer_explanation: "Integration is fundamentally about finding the total accumulation - whether it's area under a curve, distance from velocity, or any other accumulated quantity. It reverses differentiation by summing up infinitely small pieces.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1-q1", question_id: q1Id, label: "A", text: "To find the slope of a curve", is_correct: false },
+        { id: "opt2-q1", question_id: q1Id, label: "B", text: "To find the area under a curve or total accumulation", is_correct: true },
+        { id: "opt3-q1", question_id: q1Id, label: "C", text: "To solve algebraic equations", is_correct: false },
+        { id: "opt4-q1", question_id: q1Id, label: "D", text: "To find maximum and minimum values", is_correct: false }
+      ]
+    };
+
+    // Question 2
+    const q2Id = generateId();
+    const question2: QuizQuestion = {
+      id: q2Id,
+      subchapter_id: subchapterId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "easy",
+      status: "published",
+      body: "What does the 'C' represent in an indefinite integral like ∫f(x)dx = F(x) + C?",
+      answer_explanation: "The constant of integration 'C' represents any constant value that could have been in the original function. Since the derivative of any constant is zero, when we reverse differentiation through integration, we must account for all possible constants that could have been there.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1-q2", question_id: q2Id, label: "A", text: "Coefficient", is_correct: false },
+        { id: "opt2-q2", question_id: q2Id, label: "B", text: "Constant of Integration", is_correct: true },
+        { id: "opt3-q2", question_id: q2Id, label: "C", text: "Circumference", is_correct: false },
+        { id: "opt4-q2", question_id: q2Id, label: "D", text: "Calculus notation", is_correct: false }
+      ]
+    };
+
+    // Question 3
+    const q3Id = generateId();
+    const question3: QuizQuestion = {
+      id: q3Id,
+      subchapter_id: subchapterId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "standard",
+      status: "published",
+      body: "Using the power rule for integration, what is ∫x³ dx?",
+      answer_explanation: "The power rule for integration states: add 1 to the exponent, then divide by the new exponent. So ∫x³ dx = x⁴/4 + C. We go from x³ to x⁴ (add 1 to exponent 3), then divide by 4.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1-q3", question_id: q3Id, label: "A", text: "3x² + C", is_correct: false },
+        { id: "opt2-q3", question_id: q3Id, label: "B", text: "x⁴ + C", is_correct: false },
+        { id: "opt3-q3", question_id: q3Id, label: "C", text: "x⁴/4 + C", is_correct: true },
+        { id: "opt4-q3", question_id: q3Id, label: "D", text: "4x³ + C", is_correct: false }
+      ]
+    };
+
+    // Question 4
+    const q4Id = generateId();
+    const question4: QuizQuestion = {
+      id: q4Id,
+      subchapter_id: subchapterId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "standard",
+      status: "published",
+      body: "What is the relationship between differentiation and integration?",
+      answer_explanation: "Integration and differentiation are inverse operations - they undo each other. If you differentiate a function and then integrate the result, you get back to the original function (plus a constant). This is formalized in the Fundamental Theorem of Calculus.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1-q4", question_id: q4Id, label: "A", text: "They are unrelated concepts", is_correct: false },
+        { id: "opt2-q4", question_id: q4Id, label: "B", text: "They are inverse operations", is_correct: true },
+        { id: "opt3-q4", question_id: q4Id, label: "C", text: "Integration is always easier than differentiation", is_correct: false },
+        { id: "opt4-q4", question_id: q4Id, label: "D", text: "They produce the same result", is_correct: false }
+      ]
+    };
+
+    // Question 5
+    const q5Id = generateId();
+    const question5: QuizQuestion = {
+      id: q5Id,
+      subchapter_id: subchapterId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "hard",
+      status: "published",
+      body: "A car's velocity is given by v(t) = 3t² + 2t meters per second. What is the displacement (distance) function s(t)?",
+      answer_explanation: "Displacement is the integral of velocity. Using the power rule: ∫(3t² + 2t)dt = 3(t³/3) + 2(t²/2) + C = t³ + t² + C. Since we typically measure from rest, C = 0, giving s(t) = t³ + t².",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1-q5", question_id: q5Id, label: "A", text: "s(t) = 6t + 2", is_correct: false },
+        { id: "opt2-q5", question_id: q5Id, label: "B", text: "s(t) = t³ + t² + C", is_correct: true },
+        { id: "opt3-q5", question_id: q5Id, label: "C", text: "s(t) = 3t² + 2t + C", is_correct: false },
+        { id: "opt4-q5", question_id: q5Id, label: "D", text: "s(t) = t⁴/4 + t³/3", is_correct: false }
+      ]
+    };
+
+    // Question 6
+    const q6Id = generateId();
+    const question6: QuizQuestion = {
+      id: q6Id,
+      subchapter_id: subchapterId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "hard",
+      status: "published",
+      body: "What is the definite integral ∫₁³ 2x dx equal to?",
+      answer_explanation: "First find the antiderivative: ∫2x dx = x² + C. For definite integrals, evaluate at the bounds: [x²]₁³ = 3² - 1² = 9 - 1 = 8. The definite integral gives us a specific numerical value representing the area under the curve between x=1 and x=3.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1-q6", question_id: q6Id, label: "A", text: "4", is_correct: false },
+        { id: "opt2-q6", question_id: q6Id, label: "B", text: "6", is_correct: false },
+        { id: "opt3-q6", question_id: q6Id, label: "C", text: "8", is_correct: true },
+        { id: "opt4-q6", question_id: q6Id, label: "D", text: "10", is_correct: false }
+      ]
+    };
+
+    return [question1, question2, question3, question4, question5, question6];
+  }
+
+  // Generate comprehensive TOPIC-level quiz questions (Final Assessment)
+  private getTopicQuizQuestions(topicId: string): any[] {
+    const generateId = () => 'tq-' + Math.random().toString(36).substr(2, 9);
+
+    // Topic quizzes should test broader understanding across multiple concepts
+    // Mix of all difficulty levels, more questions than lesson quizzes
+
+    const q1Id = generateId();
+    const q1 = {
+      id: q1Id,
+      subchapter_id: topicId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "easy",
+      status: "published",
+      body: "What fundamental concept connects differentiation and integration?",
+      answer_explanation: "The Fundamental Theorem of Calculus establishes that differentiation and integration are inverse operations. This deep connection is the cornerstone of calculus.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1", question_id: q1Id, label: "A", text: "They both use limits", is_correct: false },
+        { id: "opt2", question_id: q1Id, label: "B", text: "The Fundamental Theorem of Calculus", is_correct: true },
+        { id: "opt3", question_id: q1Id, label: "C", text: "They both find slopes", is_correct: false },
+        { id: "opt4", question_id: q1Id, label: "D", text: "L'Hôpital's Rule", is_correct: false }
+      ]
+    };
+
+    const q2Id = generateId();
+    const q2 = {
+      id: q2Id,
+      subchapter_id: topicId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "easy",
+      status: "published",
+      body: "When evaluating a definite integral, what do the upper and lower bounds represent?",
+      answer_explanation: "The bounds define the interval over which we're calculating the accumulated change or area. They're the start and end points of the region we're integrating over.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1", question_id: q2Id, label: "A", text: "The maximum and minimum values of the function", is_correct: false },
+        { id: "opt2", question_id: q2Id, label: "B", text: "The interval over which we integrate", is_correct: true },
+        { id: "opt3", question_id: q2Id, label: "C", text: "The slope at two points", is_correct: false },
+        { id: "opt4", question_id: q2Id, label: "D", text: "The y-intercepts", is_correct: false }
+      ]
+    };
+
+    const q3Id = generateId();
+    const q3 = {
+      id: q3Id,
+      subchapter_id: topicId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "standard",
+      status: "published",
+      body: "What is ∫(4x³ - 6x + 2) dx?",
+      answer_explanation: "Apply the power rule to each term: ∫4x³ dx = x⁴, ∫-6x dx = -3x², ∫2 dx = 2x. Combine them: x⁴ - 3x² + 2x + C.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1", question_id: q3Id, label: "A", text: "12x² - 6 + C", is_correct: false },
+        { id: "opt2", question_id: q3Id, label: "B", text: "x⁴ - 3x² + 2x + C", is_correct: true },
+        { id: "opt3", question_id: q3Id, label: "C", text: "x⁴ - 6x² + 2x + C", is_correct: false },
+        { id: "opt4", question_id: q3Id, label: "D", text: "4x⁴ - 3x² + C", is_correct: false }
+      ]
+    };
+
+    const q4Id = generateId();
+    const q4 = {
+      id: q4Id,
+      subchapter_id: topicId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "standard",
+      status: "published",
+      body: "If the derivative of position s(t) is velocity v(t), what does the integral of v(t) represent?",
+      answer_explanation: "Since velocity is the derivative of position, the integral of velocity gives us back the position function. This is a direct application of the inverse relationship between differentiation and integration.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1", question_id: q4Id, label: "A", text: "Acceleration", is_correct: false },
+        { id: "opt2", question_id: q4Id, label: "B", text: "Position (displacement)", is_correct: true },
+        { id: "opt3", question_id: q4Id, label: "C", text: "Speed", is_correct: false },
+        { id: "opt4", question_id: q4Id, label: "D", text: "Force", is_correct: false }
+      ]
+    };
+
+    const q5Id = generateId();
+    const q5 = {
+      id: q5Id,
+      subchapter_id: topicId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "hard",
+      status: "published",
+      body: "Evaluate ∫₀² (x² + 1) dx",
+      answer_explanation: "First find the antiderivative: ∫(x² + 1) dx = x³/3 + x + C. For the definite integral, evaluate at the bounds: [(2)³/3 + 2] - [(0)³/3 + 0] = [8/3 + 2] - [0] = 8/3 + 6/3 = 14/3.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1", question_id: q5Id, label: "A", text: "6", is_correct: false },
+        { id: "opt2", question_id: q5Id, label: "B", text: "14/3", is_correct: true },
+        { id: "opt3", question_id: q5Id, label: "C", text: "10/3", is_correct: false },
+        { id: "opt4", question_id: q5Id, label: "D", text: "8", is_correct: false }
+      ]
+    };
+
+    const q6Id = generateId();
+    const q6 = {
+      id: q6Id,
+      subchapter_id: topicId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "hard",
+      status: "published",
+      body: "A particle starts from rest and has velocity v(t) = 6t² - 4t m/s. What is its displacement after 3 seconds?",
+      answer_explanation: "Displacement is the integral of velocity from 0 to 3: ∫₀³ (6t² - 4t) dt = [2t³ - 2t²]₀³ = [2(27) - 2(9)] - [0] = 54 - 18 = 36 meters.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1", question_id: q6Id, label: "A", text: "27 meters", is_correct: false },
+        { id: "opt2", question_id: q6Id, label: "B", text: "36 meters", is_correct: true },
+        { id: "opt3", question_id: q6Id, label: "C", text: "42 meters", is_correct: false },
+        { id: "opt4", question_id: q6Id, label: "D", text: "54 meters", is_correct: false }
+      ]
+    };
+
+    const q7Id = generateId();
+    const q7 = {
+      id: q7Id,
+      subchapter_id: topicId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: "hard",
+      status: "published",
+      body: "Why must we add the constant of integration (+C) to indefinite integrals?",
+      answer_explanation: "When we differentiate, any constant term becomes 0 and disappears. Therefore, when we integrate (reverse the process), we cannot know what constant was originally there. Adding +C accounts for all possible constant values that could have existed in the original function.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "opt1", question_id: q7Id, label: "A", text: "It makes the math easier", is_correct: false },
+        { id: "opt2", question_id: q7Id, label: "B", text: "Because constants disappear during differentiation", is_correct: true },
+        { id: "opt3", question_id: q7Id, label: "C", text: "It's a mathematical convention with no real meaning", is_correct: false },
+        { id: "opt4", question_id: q7Id, label: "D", text: "To match units correctly", is_correct: false }
+      ]
+    };
+
+    console.log(`📚 Generated ${7} TOPIC-level questions for Final Assessment`);
+    return [q1, q2, q3, q4, q5, q6, q7];
   }
 
   // Chapters (Mapped from Topics) - HARDCODED FOR DEMO
@@ -1408,6 +1749,23 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     return Promise.resolve({ success: true, message: "Quiz generated successfully (stateless fallback)" });
   }
 
+  async generateTopicQuiz(topicId: string): Promise<any> {
+    console.log(`✨ Mock generate TOPIC quiz for topic ${topicId}`);
+
+    // Find the topic and set has_final_quiz = true
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      const topic = topics.find(t => t.id === topicId);
+      if (topic) {
+        topic.has_final_quiz = true;
+        this.saveMockState();
+        console.log(`✅ Set has_final_quiz=true for topic ${topicId}`);
+        return Promise.resolve({ success: true, message: "Topic Quiz generated successfully" });
+      }
+    }
+
+    return Promise.resolve({ success: true, message: "Topic Quiz generated successfully (stateless fallback)" });
+  }
+
   async openChapter(chapterId: string, autoGenerateVideos = true): Promise<any> {
     console.warn("openChapter is deprecated. Use generateTopicChapters instead.")
     return {}
@@ -1790,6 +2148,263 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
 
   async requestPersonalizedSection(subchapterId: string, request: any): Promise<ContentSection> { throw new Error("Not implemented") }
   async trackSectionView(subchapterId: string, sectionId: string): Promise<void> { }
+
+  // --- Quiz Service Methods ---
+
+  async startQuiz(quizId: string): Promise<any> {
+    console.log(`🚀 Starting quiz ${quizId}`);
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // ✅ DETECT QUIZ TYPE: Is this a topic quiz or a lesson quiz?
+    let isTopicQuiz = false;
+
+    // Check if quizId matches a topic ID
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      if (topics.find(t => t.id === quizId)) {
+        isTopicQuiz = true;
+        console.log(`🎯 Detected TOPIC quiz for: ${quizId}`);
+        break;
+      }
+    }
+
+    if (!isTopicQuiz) {
+      console.log(`📝 Detected LESSON quiz for: ${quizId}`);
+    }
+
+    // ✅ GENERATE APPROPRIATE QUESTIONS based on quiz type
+    const questions = isTopicQuiz
+      ? this.getTopicQuizQuestions(quizId)      // Topic-level comprehensive questions
+      : this.getIntegralsQuizQuestions(quizId); // Lesson-specific questions
+
+    const attemptId = `attempt-${Date.now()}`;
+    const attemptState = {
+      id: attemptId,
+      quiz_id: quizId,
+      quiz_type: isTopicQuiz ? 'TOPIC' : 'LESSON',  // Track type for reference
+      questions: questions,
+      answers: {},
+      current_index: 0,
+      score: 0,
+      status: "IN_PROGRESS",
+      started_at: new Date().toISOString()
+    };
+
+    this.mockQuizState.set(attemptId, attemptState);
+    this.saveMockQuiz();
+
+    console.log(`✅ Started ${isTopicQuiz ? 'TOPIC' : 'LESSON'} quiz with ${questions.length} questions`);
+
+    return {
+      attempt_id: attemptId,
+      total_questions: questions.length,
+      current_index: 0,
+      question: questions[0]
+    };
+  }
+
+  async getCurrentQuestion(attemptId: string): Promise<any> {
+    const state = this.mockQuizState.get(attemptId);
+    if (!state) throw new Error("Attempt not found");
+
+    if (state.current_index >= state.questions.length) {
+      return { question: null, question_index: state.current_index, total_questions: state.questions.length };
+    }
+
+    return {
+      question: state.questions[state.current_index],
+      question_index: state.current_index,
+      total_questions: state.questions.length
+    };
+  }
+
+  async answerQuestion(attemptId: string, questionId: string, answer: string): Promise<any> {
+    console.log(`📝 Answering question ${questionId} for attempt ${attemptId}`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const state = this.mockQuizState.get(attemptId);
+    if (!state) throw new Error("Attempt not found");
+
+    const question = state.questions.find((q: QuizQuestion) => q.id === questionId);
+    if (!question) throw new Error("Question not found");
+
+    const selectedOption = question.options?.find((o: any) => o.id === answer);
+    const isCorrect = selectedOption?.is_correct || false;
+
+    state.answers[questionId] = {
+      answer_id: answer,
+      is_correct: isCorrect
+    };
+
+    state.current_index += 1;
+    if (state.current_index >= state.questions.length) {
+      state.status = "COMPLETED";
+    }
+
+    this.saveMockQuiz();
+
+    const nextQ = state.current_index < state.questions.length ? state.questions[state.current_index] : null;
+
+    return {
+      is_correct: isCorrect,
+      explanation: question.answer_explanation,
+      correct_answer: question.options?.find((o: any) => o.is_correct)?.id,
+      next_question: nextQ,
+      all_questions_answered: state.current_index >= state.questions.length
+    };
+  }
+
+  async getQuizSummary(attemptId: string): Promise<QuizSummary> {
+    const state = this.mockQuizState.get(attemptId);
+    if (!state) throw new Error("Attempt not found");
+
+    let correctCount = 0;
+    const wrongQuestions: any[] = [];
+
+    state.questions.forEach((q: QuizQuestion) => {
+      const ans = state.answers[q.id];
+      if (ans && ans.is_correct) {
+        correctCount++;
+      } else {
+        wrongQuestions.push({
+          question_id: q.id,
+          question_text: q.body,
+          your_answer: q.options?.find((o: any) => o.id === ans?.answer_id)?.text || "No Answer",
+          correct_answer: q.options?.find((o: any) => o.is_correct)?.text || "Unknown",
+          explanation: q.answer_explanation,
+          recommended_difficulty: "standard"
+        });
+      }
+    });
+
+    const percentage = Math.round((correctCount / state.questions.length) * 100);
+
+    return {
+      attempt_id: attemptId,
+      score: correctCount,
+      total: state.questions.length,
+      percentage: percentage,
+      wrong_questions: wrongQuestions,
+      remediation_required: wrongQuestions.length > 0
+    };
+  }
+
+  async chooseRemedialDifficulty(attemptId: string, questionId: string, difficulty: Difficulty): Promise<any> {
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    return {
+      remedial_id: `rem-${Date.now()}`,
+      difficulty: difficulty,
+      progress: { completed: 0, required: 2 },
+      question: {
+        id: `rem-q-${Date.now()}`,
+        subchapter_id: "remedial",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: difficulty,
+        status: "published",
+        body: `[Remedial ${difficulty}] Let's practice: What is the integral of 2x?`,
+        answer_explanation: "Using the power rule: ∫2x dx = 2(x²/2) + C = x² + C",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        options: [
+          { id: "r1", label: "A", text: "2", is_correct: false },
+          { id: "r2", label: "B", text: "x² + C", is_correct: true },
+          { id: "r3", label: "C", text: "2x²", is_correct: false },
+          { id: "r4", label: "D", text: "x + C", is_correct: false }
+        ]
+      }
+    };
+  }
+
+  async submitRemedialAnswer(remedialId: string, answer: string): Promise<any> {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const isCorrect = answer === "r2";
+
+    return {
+      is_correct: isCorrect,
+      explanation: isCorrect ? "Perfect! You've mastered this concept." : "Not quite. Remember the power rule: add 1 to exponent, divide by new exponent.",
+      progress: {
+        completed: isCorrect ? 1 : 0,
+        required: 2
+      },
+      remedial_completed: isCorrect,
+      next_question: null
+    };
+  }
+
+  async startPracticeSession(chapterId: string, difficulty: Difficulty): Promise<PracticeSession> {
+    console.log(`🎯 Starting practice session for ${chapterId} with difficulty ${difficulty}`);
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    const questions: QuizQuestion[] = Array.from({ length: 5 }).map((_, i) => ({
+      id: `prac-q-${Date.now()}-${i}`,
+      subchapter_id: chapterId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: difficulty,
+      status: "published",
+      body: `[Practice ${difficulty}] Question ${i + 1}: Find ∫x${i+1} dx`,
+      answer_explanation: `Using the power rule: ∫x${i+1} dx = x${i+2}/${i+2} + C`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "p1", label: "A", text: `x${i+2}/${i+2} + C`, is_correct: true, question_id: `prac-q-${Date.now()}-${i}` },
+        { id: "p2", label: "B", text: `${i+1}x${i}`, is_correct: false, question_id: `prac-q-${Date.now()}-${i}` },
+        { id: "p3", label: "C", text: `x${i+2} + C`, is_correct: false, question_id: `prac-q-${Date.now()}-${i}` },
+        { id: "p4", label: "D", text: `x${i+1}`, is_correct: false, question_id: `prac-q-${Date.now()}-${i}` }
+      ]
+    }));
+
+    const sessionId = `prac-session-${Date.now()}`;
+    const sessionState = {
+      id: sessionId,
+      chapter_id: chapterId,
+      questions: questions,
+      answers: {},
+      correct_count: 0
+    };
+
+    if (!this.mockQuizState.has("practice_sessions")) {
+      this.mockQuizState.set("practice_sessions", new Map());
+    }
+    const sessions = this.mockQuizState.get("practice_sessions") as Map<string, any>;
+    sessions.set(sessionId, sessionState);
+    this.saveMockQuiz();
+
+    return {
+      session_id: sessionId,
+      questions: questions,
+      quiz_context_used: false
+    };
+  }
+
+  async submitPracticeAnswer(sessionId: string, questionId: string, answer: string): Promise<PracticeAnswerResponse> {
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const sessions = this.mockQuizState.get("practice_sessions") as Map<string, any>;
+    const session = sessions?.get(sessionId);
+
+    if (!session) throw new Error("Session not found");
+
+    const question = session.questions.find((q: QuizQuestion) => q.id === questionId);
+    const isCorrect = question.options?.find((o: any) => o.id === answer)?.is_correct || false;
+
+    session.answers[questionId] = { answer, isCorrect };
+    if (isCorrect) session.correct_count++;
+
+    this.saveMockQuiz();
+
+    return {
+      is_correct: isCorrect,
+      explanation: isCorrect ? "Correct! Well done." : "Incorrect. Try to review the power rule concept.",
+      correct_answer: question.options?.find((o: any) => o.is_correct)?.id,
+      questions_completed: Object.keys(session.answers).length,
+      total_correct: session.correct_count,
+      next_question: Object.keys(session.answers).length < session.questions.length ? session.questions[Object.keys(session.answers).length] : undefined
+    };
+  }
 }
 
 export const apiClient = new ApiClient(MANAGER_URL)

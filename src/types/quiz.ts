@@ -244,3 +244,83 @@ export interface QuizFilters {
   subchapter_id?: string;
   document_id?: string;
 }
+
+/**
+ * Answer Response - Immediate feedback after answering a question
+ */
+export interface AnswerResponse {
+  is_correct: boolean;
+  explanation: string;
+  correct_answer?: string;
+  all_questions_answered?: boolean;
+  next_question?: QuizQuestion;
+}
+
+/**
+ * Quiz Summary - Results after completing a quiz
+ */
+export interface QuizSummary {
+  attempt_id: string;
+  score: number;
+  total: number;
+  percentage: number;
+  wrong_questions: Array<{
+    question_id: string;
+    question_text: string;
+    your_answer: string;
+    correct_answer: string;
+    explanation: string;
+    recommended_difficulty: Difficulty;
+  }>;
+  remediation_required: boolean;
+  remedial_plan?: any;
+}
+
+/**
+ * Remedial Question Response - Response when starting remediation
+ */
+export interface RemedialQuestionResponse {
+  remedial_id: string;
+  difficulty: Difficulty;
+  progress: {
+    completed: number;
+    required: number;
+  };
+  question: QuizQuestion;
+}
+
+/**
+ * Submit Remedial Answer Response - Feedback for remedial questions
+ */
+export interface SubmitRemedialAnswerResponse {
+  is_correct: boolean;
+  explanation: string;
+  correct_answer?: string;
+  progress: {
+    completed: number;
+    required: number;
+  };
+  remedial_completed: boolean;
+  next_question?: QuizQuestion;
+}
+
+/**
+ * Practice Session - Practice mode session data
+ */
+export interface PracticeSession {
+  session_id: string;
+  questions: QuizQuestion[];
+  quiz_context_used: boolean;
+}
+
+/**
+ * Practice Answer Response - Feedback for practice questions
+ */
+export interface PracticeAnswerResponse {
+  is_correct: boolean;
+  explanation: string;
+  correct_answer?: string;
+  questions_completed: number;
+  total_correct: number;
+  next_question?: QuizQuestion;
+}
