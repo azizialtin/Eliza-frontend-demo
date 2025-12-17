@@ -1,333 +1,154 @@
-"use client"
-
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Filter, ChevronDown, BookOpen, Users, TrendingUp, ClipboardCheck } from "lucide-react";
 import {
-  BookOpen,
-  Users,
-  TrendingUp,
-  ClipboardCheck,
-  Sparkles,
-} from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
-import { CreateSyllabusModal } from "@/components/CreateSyllabusModal"
-import { useNavigate } from "react-router-dom"
-import { useEnrolledSyllabi } from "@/hooks/useStudentApi"
-import { apiClient } from "@/lib/api"
-import { useAuth } from "@/contexts/AuthContext"
-import { useToast } from "@/hooks/use-toast"
-import purpleCharacter from "@/assets/purple-character.png"
-import redCharacter from "@/assets/red-character.png"
-import blueCharacter from "@/assets/blue-character.png"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-
-import { CreateCourseCard } from "@/components/dashboard/CreateCourseCard"
-import { CourseCard } from "@/components/dashboard/CourseCard"
-import { EmptyState } from "@/components/dashboard/EmptyState"
-import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar"
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useNavigate } from "react-router-dom";
+import { useToast } from "@/components/ui/use-toast";
+import { EngagementChart } from "@/components/dashboard/analytics/EngagementChart";
+import { MasteryHeatmap } from "@/components/dashboard/analytics/MasteryHeatmap";
+import { ClassLeaderboard } from "@/components/dashboard/analytics/ClassLeaderboard";
+import { calculateLeaderboard, MOCK_CLASSES } from "@/lib/mock-gamification";
+import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 
 export default function TeacherDashboard() {
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [syllabusToDelete, setSyllabusToDelete] = useState<string | null>(null)
-  const [activityFilter, setActivityFilter] = useState<string>("all")
-  const navigate = useNavigate()
-  const { user } = useAuth()
-  const { toast } = useToast()
-  const { syllabi, loading, refetch } = useEnrolledSyllabi()
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+  const [loadingLb, setLoadingLb] = useState(false);
 
-  const handleSyllabusClick = (syllabusId: string) => {
-    navigate(`/app/teacher/syllabus/${syllabusId}/manage`)
-  }
+  // Global Class Filter State
+  const [selectedClass, setSelectedClass] = useState<string>('9 Integral');
 
-  const handleDeleteClick = (syllabusId: string, _name: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setSyllabusToDelete(syllabusId)
-    setDeleteDialogOpen(true)
-  }
-
-  const handleConfirmDelete = async () => {
-    if (syllabusToDelete) {
-      try {
-        await apiClient.deleteSyllabus(syllabusToDelete)
-        toast({ title: "Course deleted successfully" })
-        refetch()
-      } catch (error) {
-        toast({
-          title: "Failed to delete course",
-          variant: "destructive",
-        })
-      }
-    }
-    setDeleteDialogOpen(false)
-    setSyllabusToDelete(null)
-  }
-
-  const handleDuplicate = async (syllabusId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    toast({
-      title: "Coming soon",
-      description: "Course duplication will be available soon",
-    })
-  }
-
-  // Calculate stats
-  const totalCourses = syllabi.length
-  const totalStudents = syllabi.reduce((sum, s) => sum + (s.student_count || 0), 0)
-  const activeStudents = Math.floor(totalStudents * 0.7) // Mock data
-  const pendingReviews = 0 // Mock data
-
-  // Mock recent activity
-  const recentActivity = [
-    {
-      id: 1,
-      type: "enrollment",
-      message: "New student enrolled in Mathematics",
-      time: "2 hours ago",
-      courseId: syllabi[0]?.id,
-    },
-    { id: 2, type: "quiz", message: "Quiz completed in Physics", time: "5 hours ago", courseId: syllabi[1]?.id },
-    { id: 3, type: "badge", message: "Badge awarded in Chemistry", time: "1 day ago", courseId: syllabi[2]?.id },
-  ].filter((activity) => activityFilter === "all" || activity.courseId === activityFilter)
+  // Fetch / Recalculate Leaderboard when class changes
+  useEffect(() => {
+    setLoadingLb(true);
+    // Simulate API delay slightly for realism
+    setTimeout(() => {
+      const data = calculateLeaderboard(selectedClass);
+      setLeaderboardData(data);
+      setLoadingLb(false);
+    }, 300);
+  }, [selectedClass]);
 
   return (
-    <div className="flex min-h-screen bg-[#fafafa] relative overflow-hidden font-brand">
-      {/* Left Sidebar */}
+    <div className="flex min-h-screen bg-gray-50 relative overflow-hidden font-brand">
+      {/* Left Sidebar - Fixed */}
       <div className="hidden lg:block w-64 flex-shrink-0">
         <DashboardSidebar className="fixed inset-y-0 w-64 z-20" />
       </div>
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto h-screen p-4 md:p-8 relative">
-        <div className="absolute top-8 right-8 hidden xl:block animate-fade-in pointer-events-none">
-          <img src={purpleCharacter || "/placeholder.svg"} alt="" className="w-24 h-24 object-contain opacity-40" />
+
+        {/* Header with Welcome Message */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Welcome back, Teacher!
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Manage your courses and students.
+          </p>
         </div>
 
-        <div className="w-full max-w-6xl mx-auto relative z-10">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Welcome back, {user?.first_name || "Teacher"}!
-            </h1>
-            <p className="text-gray-500 mt-1">Manage your courses and students.</p>
-          </div>
+        {/* Quick Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-            {/* Total Courses */}
-            <Card className="border-2 border-eliza-red/40 hover:border-eliza-red bg-white rounded-3xl transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-brand text-sm text-gray-500 mb-1">Total Courses</p>
-                    <p className="font-brand text-4xl font-bold text-gray-900">{totalCourses}</p>
-                  </div>
-                  <div className="w-14 h-14 rounded-2xl bg-eliza-red/10 flex items-center justify-center">
-                    <BookOpen className="h-7 w-7 text-eliza-red" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Total Students */}
-            <Card
-              className="border-2 border-eliza-blue/40 hover:border-eliza-blue bg-white rounded-3xl transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in"
-              style={{ animationDelay: "100ms" }}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-brand text-sm text-gray-500 mb-1">Total Students</p>
-                    <p className="font-brand text-4xl font-bold text-gray-900">{totalStudents}</p>
-                  </div>
-                  <div className="w-14 h-14 rounded-2xl bg-eliza-blue/10 flex items-center justify-center">
-                    <Users className="h-7 w-7 text-eliza-blue" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Active This Week */}
-            <Card
-              className="border-2 border-eliza-green/40 hover:border-eliza-green bg-white rounded-3xl transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in"
-              style={{ animationDelay: "200ms" }}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-brand text-sm text-gray-500 mb-1">Active This Week</p>
-                    <p className="font-brand text-4xl font-bold text-gray-900">{activeStudents}</p>
-                  </div>
-                  <div className="w-14 h-14 rounded-2xl bg-eliza-green/10 flex items-center justify-center">
-                    <TrendingUp className="h-7 w-7 text-eliza-green" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Pending Reviews */}
-            <Card
-              className="border-2 border-eliza-orange/40 hover:border-eliza-orange bg-white rounded-3xl transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in"
-              style={{ animationDelay: "300ms" }}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-brand text-sm text-gray-500 mb-1">Pending Reviews</p>
-                    <p className="font-brand text-4xl font-bold text-gray-900">{pendingReviews}</p>
-                  </div>
-                  <div className="w-14 h-14 rounded-2xl bg-eliza-orange/10 flex items-center justify-center">
-                    <ClipboardCheck className="h-7 w-7 text-eliza-orange" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <CreateCourseCard
-            title="Create New Course"
-            description="Upload materials and build your curriculum"
-            characterImage={purpleCharacter}
-            onClick={() => setIsCreateModalOpen(true)}
-            themeColor="eliza-purple"
-          />
-
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <div className="inline-block animate-spin mb-4">
-                <Sparkles className="h-12 w-12 text-eliza-purple" />
-              </div>
-              <p className="font-brand text-xl text-gray-600">Loading your courses...</p>
+          {/* Card 1: Total Courses (Red) */}
+          <div className="bg-white p-6 rounded-2xl border border-red-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Courses</p>
+              <h3 className="text-3xl font-bold text-gray-900 mt-1">5</h3>
             </div>
-          ) : syllabi.length === 0 ? (
-            <EmptyState
-              title="Welcome to ELIZA!"
-              description="Get started by creating your first course. Upload PDFs and let AI generate your curriculum structure automatically."
-              characterImage={blueCharacter}
-            >
-              <div className="bg-eliza-yellow/10 border-2 border-eliza-yellow rounded-2xl p-6 max-w-lg mx-auto mt-6">
-                <h4 className="font-brand text-lg font-bold text-gray-900 mb-3">Quick Start Guide:</h4>
-                <ol className="font-brand text-left text-gray-700 space-y-2">
-                  <li className="flex items-start gap-2">
-                    <span className="font-bold text-eliza-yellow">1.</span>
-                    <span>Click "Create New Course" above</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="font-bold text-eliza-yellow">2.</span>
-                    <span>Upload your course materials (PDFs)</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="font-bold text-eliza-yellow">3.</span>
-                    <span>Generate chapters and content automatically</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="font-bold text-eliza-yellow">4.</span>
-                    <span>Customize and publish to students</span>
-                  </li>
-                </ol>
-              </div>
-            </EmptyState>
-          ) : (
-            <>
-              {/* My Courses Section */}
-              <div className="mb-8 mt-10">
-                <h2 className="font-brand text-2xl font-bold text-gray-900 mb-6">My Courses</h2>
-                <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-6">
-                  {syllabi.map((syllabus, index) => (
-                    <CourseCard
-                      key={syllabus.id}
-                      syllabus={syllabus}
-                      index={index}
-                      isTeacher={true}
-                      onClick={handleSyllabusClick}
-                      onDelete={handleDeleteClick}
-                      onEdit={(id) => navigate(`/app/teacher/syllabus/${id}/manage`)}
-                      onDuplicate={handleDuplicate}
-                      onAnalytics={() => toast({ title: "Analytics coming soon!" })}
-                    />
-                  ))}
-                </div>
-              </div>
+            <div className="h-12 w-12 rounded-xl bg-red-50 flex items-center justify-center text-red-500">
+              <BookOpen className="h-6 w-6" />
+            </div>
+          </div>
 
-              {/* Recent Activity Feed */}
-              <div className="animate-fade-in">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="font-brand text-2xl font-bold text-gray-900">Recent Activity</h2>
-                  <select
-                    value={activityFilter}
-                    onChange={(e) => setActivityFilter(e.target.value)}
-                    className="font-brand border-2 border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-eliza-purple bg-white"
-                  >
-                    <option value="all">All Courses</option>
-                    {syllabi.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <Card className="border-2 border-gray-200 rounded-3xl bg-white">
-                  <CardContent className="p-6">
-                    {recentActivity.length > 0 ? (
-                      <div className="space-y-4">
-                        {recentActivity.map((activity) => (
-                          <div key={activity.id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
-                            <div className="w-10 h-10 rounded-full bg-eliza-blue/10 flex items-center justify-center flex-shrink-0">
-                              <Users className="h-5 w-5 text-eliza-blue" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-brand text-sm text-gray-900">{activity.message}</p>
-                              <p className="font-brand text-xs text-gray-500 mt-1">{activity.time}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <p className="font-brand text-gray-500">No recent activity</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </>
-          )}
+          {/* Card 2: Total Students (Blue) */}
+          <div className="bg-white p-6 rounded-2xl border border-blue-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Students</p>
+              <h3 className="text-3xl font-bold text-gray-900 mt-1">24</h3>
+            </div>
+            <div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
+              <Users className="h-6 w-6" />
+            </div>
+          </div>
+
+          {/* Card 3: Active This Week (Green) */}
+          <div className="bg-white p-6 rounded-2xl border border-green-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Active This Week</p>
+              <h3 className="text-3xl font-bold text-gray-900 mt-1">18</h3>
+            </div>
+            <div className="h-12 w-12 rounded-xl bg-green-50 flex items-center justify-center text-green-500">
+              <TrendingUp className="h-6 w-6" />
+            </div>
+          </div>
+
+          {/* Card 4: Pending Reviews (Orange) */}
+          <div className="bg-white p-6 rounded-2xl border border-orange-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Pending Reviews</p>
+              <h3 className="text-3xl font-bold text-gray-900 mt-1">2</h3>
+            </div>
+            <div className="h-12 w-12 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500">
+              <ClipboardCheck className="h-6 w-6" />
+            </div>
+          </div>
         </div>
+
+        {/* Analytics Section Header with Filter */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-eliza-blue" />
+            <h2 className="text-xl font-bold text-gray-900">Class Analytics & Gamification</h2>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Global Class Selector */}
+            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border shadow-sm">
+              <Filter className="w-4 h-4 text-gray-400" />
+              <span className="text-sm font-medium text-gray-600">Filter Class:</span>
+              <Select value={selectedClass} onValueChange={setSelectedClass}>
+                <SelectTrigger className="w-[120px] h-8 border-none bg-transparent focus:ring-0">
+                  <SelectValue placeholder="Select Class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MOCK_CLASSES.map(cls => (
+                    <SelectItem key={cls} value={cls}>Class {cls}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* Analytics Row - 2 Columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[400px] mb-8">
+          {/* Engagement Chart (Stacked Activity) */}
+          <EngagementChart classId={selectedClass} />
+
+          <MasteryHeatmap classId={selectedClass} />
+        </div>
+
+        {/* Leaderboard Section - Full Width */}
+        <div className="w-full pb-20">
+          <ClassLeaderboard
+            leaderboardData={leaderboardData}
+            isLoading={loadingLb}
+            variant="default" // Explicitly Teacher Mode
+          />
+        </div>
+
       </main>
-
-      {/* Create Syllabus Modal */}
-      <CreateSyllabusModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onCreateSyllabus={(syllabusId) => navigate(`/app/teacher/syllabus/${syllabusId}/manage`)}
-      />
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="font-brand">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this course and all its content. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
-  )
+  );
 }

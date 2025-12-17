@@ -8,27 +8,70 @@ import { CourseCard } from "@/components/dashboard/CourseCard"
 import { useNavigate } from "react-router-dom"
 import { Sparkles } from "lucide-react"
 import { EmptyState } from "@/components/dashboard/EmptyState"
+
 import blueCharacter from "@/assets/blue-character.png"
+import purpleCharacter from "@/assets/purple-character.png"
+import { CreateCourseCard } from "@/components/dashboard/CreateCourseCard"
+import { CreateSyllabusModal } from "@/components/CreateSyllabusModal"
+import { useState } from "react"
+import { apiClient } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+
 
 export default function Courses() {
     const { user } = useAuth()
-    const { syllabi, loading } = useEnrolledSyllabi()
+
     const navigate = useNavigate()
     const isTeacher = user?.role === "TEACHER"
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+    const [syllabusToDelete, setSyllabusToDelete] = useState<string | null>(null)
+    const { toast } = useToast()
+    const { syllabi, loading, refetch } = useEnrolledSyllabi() // Ensure we refetch on delete
+
 
     const handleSyllabusClick = (syllabusId: string) => {
         navigate(`/app/syllabus/${syllabusId}`)
     }
 
     // We can reuse the same delete/rename handlers as Dashboard, or simplify for now since this is a list view
-    const handleDeleteClick = (syllabusId: string, syllabusName: string, e: React.MouseEvent) => {
+    const handleDeleteClick = (syllabusId: string, _name: string, e: React.MouseEvent) => {
         e.stopPropagation()
-        // For now, simpler implementation or pass proper handlers if needed
+        setSyllabusToDelete(syllabusId)
+        setDeleteDialogOpen(true)
+    }
+
+    const handleConfirmDelete = async () => {
+        if (syllabusToDelete) {
+            try {
+                await apiClient.deleteSyllabus(syllabusToDelete)
+                toast({ title: "Course deleted successfully" })
+                refetch()
+            } catch (error) {
+                toast({
+                    title: "Failed to delete course",
+                    variant: "destructive",
+                })
+            }
+        }
+        setDeleteDialogOpen(false)
+        setSyllabusToDelete(null)
     }
 
     const handleRenameClick = (syllabusId: string, syllabusName: string, e: React.MouseEvent) => {
         e.stopPropagation()
     }
+
 
 
     return (
@@ -49,19 +92,35 @@ export default function Courses() {
                             <p className="font-brand text-xl text-gray-600">Loading your courses...</p>
                         </div>
                     ) : syllabi.length > 0 ? (
-                        <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-6">
-                            {syllabi.map((syllabus: any, index: number) => (
-                                <CourseCard
-                                    key={syllabus.id}
-                                    syllabus={syllabus}
-                                    index={index}
-                                    isTeacher={isTeacher}
-                                    onClick={handleSyllabusClick}
-                                    onDelete={handleDeleteClick}
-                                    onRename={handleRenameClick}
+                        <div className="space-y-8">
+                            {isTeacher && (
+                                <CreateCourseCard
+                                    title="Create New Course"
+                                    description="Upload materials and build your curriculum"
+                                    characterImage={purpleCharacter}
+                                    onClick={() => setIsCreateModalOpen(true)}
+                                    themeColor="eliza-purple"
                                 />
-                            ))}
+                            )}
+                            <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-6">
+                                {syllabi.map((syllabus: any, index: number) => (
+                                    <CourseCard
+                                        key={syllabus.id}
+                                        syllabus={syllabus}
+                                        index={index}
+                                        isTeacher={isTeacher}
+                                        onClick={handleSyllabusClick}
+                                        onDelete={handleDeleteClick}
+                                        onEdit={(id, e) => {
+                                            e.stopPropagation()
+                                            navigate(`/app/teacher/syllabus/${id}/manage?mode=edit&step=2`)
+                                        }}
+                                        onRename={handleRenameClick}
+                                    />
+                                ))}
+                            </div>
                         </div>
+
                     ) : (
                         <EmptyState
                             title="No courses yet"
@@ -72,9 +131,30 @@ export default function Courses() {
                 </div>
             </main>
 
-            <div className="hidden xl:block w-80 flex-shrink-0">
-                <DashboardRightPanel className="fixed inset-y-0 right-0 w-80 z-20" isTeacher={isTeacher} />
-            </div>
+            {/* Modals */}
+            <CreateSyllabusModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                onCreateSyllabus={(syllabusId) => navigate(`/app/teacher/syllabus/${syllabusId}/manage`)}
+            />
+
+            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <AlertDialogContent className="font-brand">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently delete this course and all its content. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
         </div>
     )
 }

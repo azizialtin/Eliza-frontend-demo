@@ -13,6 +13,8 @@ export { MANAGER_URL, CONTENT_URL, VIDEO_URL, RAG_URL, QUIZ_URL }
 // Import content section types
 import type { ContentSection, PersonalizedSectionRequest } from "@/types/content-sections"
 import albanianVideo from "../riemann-sum-albanian-FINAL.mp4"
+import { calculateLeaderboard, getDailyActivityStats, MOCK_STUDENTS, GamifiedStudent, StudentStats } from './mock-gamification';
+
 
 // Auth token management
 export const setAuthToken = (token: string | null) => {
@@ -1577,9 +1579,46 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     return { success: true };
   }
 
+
   async getSyllabusStats(syllabusId: string): Promise<any> {
     return this.request(`/ api / v1 / pdfs / ${syllabusId}/stats`);
   }
+
+  // --- Gamification & Analytics (Mocked) ---
+
+  async getLeaderboard(syllabusId: string): Promise<(StudentStats & { student: GamifiedStudent })[]> {
+    console.log(`🏆 Fetching leaderboard for ${syllabusId}`);
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    const stats = calculateLeaderboard();
+
+    // Join with student details
+    return stats.map(stat => {
+      const student = MOCK_STUDENTS.find(s => s.id === stat.student_id);
+      return {
+        ...stat,
+        student: student!
+      };
+    });
+  }
+
+  async getClassAnalytics(syllabusId: string): Promise<any> {
+    console.log(`📊 Fetching analytics for ${syllabusId}`);
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    return {
+      dailyActivity: getDailyActivityStats(),
+      masteryByTopic: [
+        { topic: 'Number', avgScore: 85, difficulty: 'Medium' },
+        { topic: 'Algebra', avgScore: 62, difficulty: 'Hard' },
+        { topic: 'Geometry', avgScore: 78, difficulty: 'Medium' },
+        { topic: 'Probability', avgScore: 92, difficulty: 'Easy' },
+        { topic: 'Calculus', avgScore: 45, difficulty: 'Extra Hard' },
+      ]
+    };
+  }
+
 
   async reorderChapters(syllabusId: string, chapterIds: string[]): Promise<any> { return {} }
   async reorderSubchapters(chapterId: string, subchapterIds: string[]): Promise<any> { return {} }
@@ -1742,7 +1781,7 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
   // Gamification Stubs
   async getStudentBadges(): Promise<StudentBadge[]> { return [] }
   async getStudentXP(syllabusId: string): Promise<StudentXP> { return { student_id: "me", syllabus_id: syllabusId, total_xp: 0, current_streak: 0, longest_streak: 0 } }
-  async getLeaderboard(): Promise<LeaderboardEntry[]> { return [] }
+
   async getSubchapterBadges(subchapterId: string): Promise<BadgeDefinition[]> { return [] }
   async createBadge(subchapterId: string, badge: any): Promise<BadgeDefinition> { throw new Error("Not implemented") }
   async updateBadge(badgeId: string, badge: any): Promise<BadgeDefinition> { throw new Error("Not implemented") }
