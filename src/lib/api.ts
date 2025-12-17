@@ -26,6 +26,8 @@ import {
 } from "../types/quiz"
 
 import albanianVideo from "../riemann-sum-albanian-FINAL.mp4"
+import { calculateLeaderboard, getDailyActivityStats, MOCK_STUDENTS, GamifiedStudent, StudentStats } from './mock-gamification';
+
 
 // Auth token management
 export const setAuthToken = (token: string | null) => {
@@ -142,6 +144,7 @@ export interface Chapter {
   created_at: string
   subchapters?: Subchapter[]
   is_published?: boolean
+  has_final_quiz?: boolean
 }
 
 export interface Subchapter {
@@ -2729,9 +2732,46 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     return { success: true };
   }
 
+
   async getSyllabusStats(syllabusId: string): Promise<any> {
     return this.request(`/ api / v1 / pdfs / ${syllabusId}/stats`);
   }
+
+  // --- Gamification & Analytics (Mocked) ---
+
+  async getLeaderboard(syllabusId: string): Promise<(StudentStats & { student: GamifiedStudent })[]> {
+    console.log(`🏆 Fetching leaderboard for ${syllabusId}`);
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    const stats = calculateLeaderboard();
+
+    // Join with student details
+    return stats.map(stat => {
+      const student = MOCK_STUDENTS.find(s => s.id === stat.student_id);
+      return {
+        ...stat,
+        student: student!
+      };
+    });
+  }
+
+  async getClassAnalytics(syllabusId: string): Promise<any> {
+    console.log(`📊 Fetching analytics for ${syllabusId}`);
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    return {
+      dailyActivity: getDailyActivityStats(),
+      masteryByTopic: [
+        { topic: 'Number', avgScore: 85, difficulty: 'Medium' },
+        { topic: 'Algebra', avgScore: 62, difficulty: 'Hard' },
+        { topic: 'Geometry', avgScore: 78, difficulty: 'Medium' },
+        { topic: 'Probability', avgScore: 92, difficulty: 'Easy' },
+        { topic: 'Calculus', avgScore: 45, difficulty: 'Extra Hard' },
+      ]
+    };
+  }
+
 
   async reorderChapters(syllabusId: string, chapterIds: string[]): Promise<any> { return {} }
   async reorderSubchapters(chapterId: string, subchapterIds: string[]): Promise<any> { return {} }
@@ -2894,7 +2934,7 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
   // Gamification Stubs
   async getStudentBadges(): Promise<StudentBadge[]> { return [] }
   async getStudentXP(syllabusId: string): Promise<StudentXP> { return { student_id: "me", syllabus_id: syllabusId, total_xp: 0, current_streak: 0, longest_streak: 0 } }
-  async getLeaderboard(): Promise<LeaderboardEntry[]> { return [] }
+
   async getSubchapterBadges(subchapterId: string): Promise<BadgeDefinition[]> { return [] }
   async createBadge(subchapterId: string, badge: any): Promise<BadgeDefinition> { throw new Error("Not implemented") }
   async updateBadge(badgeId: string, badge: any): Promise<BadgeDefinition> { throw new Error("Not implemented") }
@@ -2903,6 +2943,263 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
 
   async requestPersonalizedSection(subchapterId: string, request: any): Promise<ContentSection> { throw new Error("Not implemented") }
   async trackSectionView(subchapterId: string, sectionId: string): Promise<void> { }
+
+  // --- Quiz Service Methods ---
+
+  async startQuiz(quizId: string): Promise<any> {
+    console.log(`🚀 Starting quiz ${quizId}`);
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // ✅ DETECT QUIZ TYPE: Is this a topic quiz or a lesson quiz?
+    let isTopicQuiz = false;
+
+    // Check if quizId matches a topic ID
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      if (topics.find(t => t.id === quizId)) {
+        isTopicQuiz = true;
+        console.log(`🎯 Detected TOPIC quiz for: ${quizId}`);
+        break;
+      }
+    }
+
+    if (!isTopicQuiz) {
+      console.log(`📝 Detected LESSON quiz for: ${quizId}`);
+    }
+
+    // ✅ GENERATE APPROPRIATE QUESTIONS based on quiz type
+    const questions = isTopicQuiz
+      ? this.getTopicQuizQuestions(quizId)      // Topic-level comprehensive questions
+      : this.getIntegralsQuizQuestions(quizId); // Lesson-specific questions
+
+    const attemptId = `attempt-${Date.now()}`;
+    const attemptState = {
+      id: attemptId,
+      quiz_id: quizId,
+      quiz_type: isTopicQuiz ? 'TOPIC' : 'LESSON',  // Track type for reference
+      questions: questions,
+      answers: {},
+      current_index: 0,
+      score: 0,
+      status: "IN_PROGRESS",
+      started_at: new Date().toISOString()
+    };
+
+    this.mockQuizState.set(attemptId, attemptState);
+    this.saveMockQuiz();
+
+    console.log(`✅ Started ${isTopicQuiz ? 'TOPIC' : 'LESSON'} quiz with ${questions.length} questions`);
+
+    return {
+      attempt_id: attemptId,
+      total_questions: questions.length,
+      current_index: 0,
+      question: questions[0]
+    };
+  }
+
+  async getCurrentQuestion(attemptId: string): Promise<any> {
+    const state = this.mockQuizState.get(attemptId);
+    if (!state) throw new Error("Attempt not found");
+
+    if (state.current_index >= state.questions.length) {
+      return { question: null, question_index: state.current_index, total_questions: state.questions.length };
+    }
+
+    return {
+      question: state.questions[state.current_index],
+      question_index: state.current_index,
+      total_questions: state.questions.length
+    };
+  }
+
+  async answerQuestion(attemptId: string, questionId: string, answer: string): Promise<any> {
+    console.log(`📝 Answering question ${questionId} for attempt ${attemptId}`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const state = this.mockQuizState.get(attemptId);
+    if (!state) throw new Error("Attempt not found");
+
+    const question = state.questions.find((q: QuizQuestion) => q.id === questionId);
+    if (!question) throw new Error("Question not found");
+
+    const selectedOption = question.options?.find((o: any) => o.id === answer);
+    const isCorrect = selectedOption?.is_correct || false;
+
+    state.answers[questionId] = {
+      answer_id: answer,
+      is_correct: isCorrect
+    };
+
+    state.current_index += 1;
+    if (state.current_index >= state.questions.length) {
+      state.status = "COMPLETED";
+    }
+
+    this.saveMockQuiz();
+
+    const nextQ = state.current_index < state.questions.length ? state.questions[state.current_index] : null;
+
+    return {
+      is_correct: isCorrect,
+      explanation: question.answer_explanation,
+      correct_answer: question.options?.find((o: any) => o.is_correct)?.id,
+      next_question: nextQ,
+      all_questions_answered: state.current_index >= state.questions.length
+    };
+  }
+
+  async getQuizSummary(attemptId: string): Promise<QuizSummary> {
+    const state = this.mockQuizState.get(attemptId);
+    if (!state) throw new Error("Attempt not found");
+
+    let correctCount = 0;
+    const wrongQuestions: any[] = [];
+
+    state.questions.forEach((q: QuizQuestion) => {
+      const ans = state.answers[q.id];
+      if (ans && ans.is_correct) {
+        correctCount++;
+      } else {
+        wrongQuestions.push({
+          question_id: q.id,
+          question_text: q.body,
+          your_answer: q.options?.find((o: any) => o.id === ans?.answer_id)?.text || "No Answer",
+          correct_answer: q.options?.find((o: any) => o.is_correct)?.text || "Unknown",
+          explanation: q.answer_explanation,
+          recommended_difficulty: "standard"
+        });
+      }
+    });
+
+    const percentage = Math.round((correctCount / state.questions.length) * 100);
+
+    return {
+      attempt_id: attemptId,
+      score: correctCount,
+      total: state.questions.length,
+      percentage: percentage,
+      wrong_questions: wrongQuestions,
+      remediation_required: wrongQuestions.length > 0
+    };
+  }
+
+  async chooseRemedialDifficulty(attemptId: string, questionId: string, difficulty: Difficulty): Promise<any> {
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    return {
+      remedial_id: `rem-${Date.now()}`,
+      difficulty: difficulty,
+      progress: { completed: 0, required: 2 },
+      question: {
+        id: `rem-q-${Date.now()}`,
+        subchapter_id: "remedial",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: difficulty,
+        status: "published",
+        body: `[Remedial ${difficulty}] Let's practice: What is the integral of 2x?`,
+        answer_explanation: "Using the power rule: ∫2x dx = 2(x²/2) + C = x² + C",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        options: [
+          { id: "r1", label: "A", text: "2", is_correct: false },
+          { id: "r2", label: "B", text: "x² + C", is_correct: true },
+          { id: "r3", label: "C", text: "2x²", is_correct: false },
+          { id: "r4", label: "D", text: "x + C", is_correct: false }
+        ]
+      }
+    };
+  }
+
+  async submitRemedialAnswer(remedialId: string, answer: string): Promise<any> {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const isCorrect = answer === "r2";
+
+    return {
+      is_correct: isCorrect,
+      explanation: isCorrect ? "Perfect! You've mastered this concept." : "Not quite. Remember the power rule: add 1 to exponent, divide by new exponent.",
+      progress: {
+        completed: isCorrect ? 1 : 0,
+        required: 2
+      },
+      remedial_completed: isCorrect,
+      next_question: null
+    };
+  }
+
+  async startPracticeSession(chapterId: string, difficulty: Difficulty): Promise<PracticeSession> {
+    console.log(`🎯 Starting practice session for ${chapterId} with difficulty ${difficulty}`);
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    const questions: QuizQuestion[] = Array.from({ length: 5 }).map((_, i) => ({
+      id: `prac-q-${Date.now()}-${i}`,
+      subchapter_id: chapterId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: difficulty,
+      status: "published",
+      body: `[Practice ${difficulty}] Question ${i + 1}: Find ∫x${i+1} dx`,
+      answer_explanation: `Using the power rule: ∫x${i+1} dx = x${i+2}/${i+2} + C`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "p1", label: "A", text: `x${i+2}/${i+2} + C`, is_correct: true, question_id: `prac-q-${Date.now()}-${i}` },
+        { id: "p2", label: "B", text: `${i+1}x${i}`, is_correct: false, question_id: `prac-q-${Date.now()}-${i}` },
+        { id: "p3", label: "C", text: `x${i+2} + C`, is_correct: false, question_id: `prac-q-${Date.now()}-${i}` },
+        { id: "p4", label: "D", text: `x${i+1}`, is_correct: false, question_id: `prac-q-${Date.now()}-${i}` }
+      ]
+    }));
+
+    const sessionId = `prac-session-${Date.now()}`;
+    const sessionState = {
+      id: sessionId,
+      chapter_id: chapterId,
+      questions: questions,
+      answers: {},
+      correct_count: 0
+    };
+
+    if (!this.mockQuizState.has("practice_sessions")) {
+      this.mockQuizState.set("practice_sessions", new Map());
+    }
+    const sessions = this.mockQuizState.get("practice_sessions") as Map<string, any>;
+    sessions.set(sessionId, sessionState);
+    this.saveMockQuiz();
+
+    return {
+      session_id: sessionId,
+      questions: questions,
+      quiz_context_used: false
+    };
+  }
+
+  async submitPracticeAnswer(sessionId: string, questionId: string, answer: string): Promise<PracticeAnswerResponse> {
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const sessions = this.mockQuizState.get("practice_sessions") as Map<string, any>;
+    const session = sessions?.get(sessionId);
+
+    if (!session) throw new Error("Session not found");
+
+    const question = session.questions.find((q: QuizQuestion) => q.id === questionId);
+    const isCorrect = question.options?.find((o: any) => o.id === answer)?.is_correct || false;
+
+    session.answers[questionId] = { answer, isCorrect };
+    if (isCorrect) session.correct_count++;
+
+    this.saveMockQuiz();
+
+    return {
+      is_correct: isCorrect,
+      explanation: isCorrect ? "Correct! Well done." : "Incorrect. Try to review the power rule concept.",
+      correct_answer: question.options?.find((o: any) => o.is_correct)?.id,
+      questions_completed: Object.keys(session.answers).length,
+      total_correct: session.correct_count,
+      next_question: Object.keys(session.answers).length < session.questions.length ? session.questions[Object.keys(session.answers).length] : undefined
+    };
+  }
 }
 
 export const apiClient = new ApiClient(MANAGER_URL)

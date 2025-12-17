@@ -90,7 +90,10 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   const handleSubmitAnswer = async () => {
     if (!attemptId || !currentQuestion || !selectedOption) return
 
-    setIsSubmitting(true)
+  // --- Handlers ---
+
+  const handleStartQuizFlow = async () => {
+    setPhase("LOADING")
     try {
       const response = await apiClient.answerQuestion(attemptId, currentQuestion.id, selectedOption)
       setAnswerFeedback(response)
@@ -280,6 +283,169 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
     const wrongCount = summary?.wrong_questions.length || 0
     const wrongQuestions = summary?.wrong_questions || []
 
+  // --- Handlers ---
+
+  const handleSubmitAnswer = async () => {
+    if (!attemptId || !currentQuestion || !selectedOption) return
+
+    setIsSubmitting(true)
+    try {
+      const response = await apiClient.answerQuestion(attemptId, currentQuestion.id, selectedOption)
+      setAnswerFeedback(response)
+      setPhase("FEEDBACK")
+    } catch (error) {
+      console.error("Answer submission failed", error)
+      toast({ title: "Error", description: "Failed to submit answer", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleNextQuestion = async () => {
+    if (!answerFeedback) return
+
+    // Reset state
+    setSelectedOption(null)
+    setAnswerFeedback(null)
+
+    if (answerFeedback.next_question) {
+      setCurrentQuestion(answerFeedback.next_question)
+      setQuestionIndex(prev => prev + 1)
+      setPhase("QUESTION")
+    } else if (answerFeedback.all_questions_answered) {
+      fetchSummary(attemptId!)
+    } else {
+      // Should fetch manually if next_question not provided but not done
+      // In our case, we expect next_question to be present or all_answered=true
+      const next = await apiClient.getCurrentQuestion(attemptId!)
+      if (next.question) {
+        setCurrentQuestion(next.question)
+        setQuestionIndex(next.question_index)
+        setPhase("QUESTION")
+      } else {
+        fetchSummary(attemptId!)
+      }
+    }
+  }
+
+  const fetchSummary = async (id: string) => {
+    setPhase("LOADING")
+    try {
+      const result = await apiClient.getQuizSummary(id)
+      setSummary(result)
+
+      if (result.remedial_plan || result.remediation_required) {
+        // Prepare for remediation
+        setPhase("SUMMARY") // We show summary first, then user clicks "Start Remediation"
+      } else {
+        setPhase("COMPLETED")
+      }
+    } catch (error) {
+      console.error("Failed to fetch summary", error)
+    }
+  }
+
+  const startRemediation = () => {
+    setCurrentWrongQuestionIndex(0)
+    setPhase("REMEDIATION_SELECT")
+  }
+
+  const handleSelectDifficulty = async (difficulty: Difficulty) => {
+    if (!summary || !attemptId) return
+
+    // Find the current wrong question ID we are remediating
+    // The summary.questions includes all questions. We filter for wrong ones.
+    const wrongQuestions = summary.wrong_questions || [] // Use wrong_questions array from summary
+    const targetQ = wrongQuestions[currentWrongQuestionIndex]
+
+    if (!targetQ) {
+      // Done?
+      setPhase("COMPLETED")
+      return
+    }
+
+    setPhase("LOADING")
+    try {
+      const result = await apiClient.chooseRemedialDifficulty(attemptId, targetQ.question_id, difficulty)
+      setRemedialQuestion(result)
+      setPhase("REMEDIATION_QUESTION")
+    } catch (error) {
+      console.error("Failed to start remediation", error)
+      setPhase("REMEDIATION_SELECT") // Go back
+    }
+  }
+
+  const handleSubmitRemedial = async () => {
+    if (!remedialQuestion || !selectedOption) return
+
+    setIsSubmitting(true)
+    try {
+      const response = await apiClient.submitRemedialAnswer(remedialQuestion.remedial_id, selectedOption)
+      setRemedialFeedback(response)
+      setPhase("REMEDIATION_FEEDBACK")
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to submit answer", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleNextRemedial = () => {
+    if (!remedialFeedback) return
+
+    setSelectedOption(null)
+    setRemedialFeedback(null)
+
+    if (remedialFeedback.next_question) {
+      // Continue same remedial set
+      if (remedialQuestion) {
+        setRemedialQuestion(prev => prev ? ({ ...prev, question: remedialFeedback.next_question! }) : null)
+        setPhase("REMEDIATION_QUESTION")
+      }
+    } else if (remedialFeedback.remedial_completed) {
+      // This concept is done. Move to next wrong question.
+      const wrongQuestions = summary?.wrong_questions || []
+      if (currentWrongQuestionIndex < wrongQuestions.length - 1) {
+        setCurrentWrongQuestionIndex(prev => prev + 1)
+        setPhase("REMEDIATION_SELECT")
+      } else {
+        setPhase("COMPLETED")
+      }
+    } else {
+      // Default fallback
+      setPhase("COMPLETED")
+    }
+  }
+
+  // --- Render Helpers ---
+
+  const renderProgress = () => {
+    let val = 0
+    if (phase === "QUESTION" || phase === "FEEDBACK") {
+      val = ((questionIndex) / totalQuestions) * 100
+    } else if (phase.startsWith("REMEDIATION")) {
+      const wrongTotal = summary?.wrong_questions.length || 1
+      val = (currentWrongQuestionIndex / wrongTotal) * 100
+    } else if (phase === "COMPLETED") {
+      val = 100
+    }
+    return <Progress value={val} className="h-2 bg-gray-100" />
+  }
+
+  const getOptions = (options?: any[]) => {
+    if (!options) return []
+    // Normalize options
+    return options.map((opt, i) => {
+      if (typeof opt === 'string') {
+        return { id: opt, label: String.fromCharCode(65 + i), text: opt }
+      }
+      return { id: opt.id, label: opt.label || String.fromCharCode(65 + i), text: opt.text }
+    })
+  }
+
+  // --- Views ---
+
+  if (phase === "LOADING") {
     return (
       <div className={cn("fixed inset-0 bg-gray-50 z-50 flex flex-col overflow-y-auto p-4 animate-in fade-in zoom-in-95", className)}>
         <div className="w-full max-w-3xl mx-auto my-8 space-y-6">

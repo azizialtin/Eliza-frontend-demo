@@ -63,6 +63,26 @@ export default function StudentDashboard() {
   const syllabi = studentResult.syllabi
   const loading = studentResult.loading
 
+  // Leaderboard State
+  const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      setLoadingStats(true);
+      try {
+        // Fetch global leaderboard
+        const lb = await apiClient.getLeaderboard('global');
+        setLeaderboardData(lb);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+    loadStats();
+  }, []);
+
   const handleStartJourney = () => {
     setIsJourneyModalOpen(true)
   }
@@ -185,7 +205,12 @@ export default function StudentDashboard() {
 
       {/* Right Stats Panel */}
       <div className="hidden xl:block w-80 flex-shrink-0">
-        <DashboardRightPanel className="fixed inset-y-0 right-0 w-80 z-20" isTeacher={false} />
+        <DashboardRightPanel
+          className="fixed inset-y-0 right-0 w-80 z-20"
+          isTeacher={false}
+          leaderboardData={leaderboardData}
+          isLoading={loadingStats}
+        />
       </div>
 
       <LearningJourneyModal
