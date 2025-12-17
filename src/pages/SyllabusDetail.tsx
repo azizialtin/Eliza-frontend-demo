@@ -218,6 +218,12 @@ export default function SyllabusDetail({ backUrlOverride, isCreatorMode = false 
       // In creator mode, hide PDF, AI Tutor, and Blackboard
       return !["pdf", "tutor", "blackboard"].includes(tab.id)
     }
+
+    // RESTRICTION: Students cannot see PDF or Blackboard
+    if (user?.role === "STUDENT") {
+      return !["pdf", "blackboard"].includes(tab.id);
+    }
+
     return true
   })
 
@@ -239,7 +245,7 @@ export default function SyllabusDetail({ backUrlOverride, isCreatorMode = false 
           subchapter={enhancedSubchapter}
           onComplete={handleSubchapterComplete}
           backUrl={finalBackUrl}
-          showComplete={!isCreatorMode}
+          showComplete={!isCreatorMode && !isStudent}
         />
       )}
 

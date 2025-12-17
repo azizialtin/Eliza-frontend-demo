@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, MessageSquare, X, User, Bot, Sparkles } from "lucide-react"
+import { Send, MessageSquare, X, User, Bot, Sparkles, Volume2, Play, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +13,7 @@ interface Message {
     role: "user" | "assistant"
     content: string
     timestamp: Date
+    hasModalities?: boolean
 }
 
 interface TutorChatWidgetProps {
@@ -56,13 +57,14 @@ export const TutorChatWidget = ({ isOpen = true, onClose, currentTopic, ragConte
         setInputValue("")
         setIsTyping(true)
 
-        // Mock AI Response
+        // Mock AI Response with Modalities
         setTimeout(() => {
             const aiMsg: Message = {
                 id: (Date.now() + 1).toString(),
                 role: "assistant",
-                content: "That's a great question! I'm currently in demo mode, but soon I'll be able to answer questions based on your lesson content using RAG (Retrieval-Augmented Generation).",
-                timestamp: new Date()
+                content: "Here is the explanation you requested.",
+                timestamp: new Date(),
+                hasModalities: true
             }
             setMessages(prev => [...prev, aiMsg])
             setIsTyping(false)
@@ -90,7 +92,7 @@ export const TutorChatWidget = ({ isOpen = true, onClose, currentTopic, ragConte
                     <div
                         key={msg.id}
                         className={cn(
-                            "flex gap-3 max-w-[85%]",
+                            "flex gap-3 max-w-[95%]",
                             msg.role === "user" ? "ml-auto flex-row-reverse" : ""
                         )}
                     >
@@ -101,12 +103,18 @@ export const TutorChatWidget = ({ isOpen = true, onClose, currentTopic, ragConte
                             {msg.role === "user" ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                         </div>
                         <div className={cn(
-                            "p-3 rounded-2xl text-sm shadow-sm",
+                            "shadow-sm",
                             msg.role === "user"
-                                ? "bg-eliza-blue text-white rounded-tr-none"
-                                : "bg-white border border-gray-100 text-gray-800 rounded-tl-none"
+                                ? "bg-eliza-blue text-white rounded-2xl rounded-tr-none p-3"
+                                : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-none p-0 overflow-hidden" // Removed padding for complex messages
                         )}>
-                            {msg.content}
+                            {msg.hasModalities ? (
+                                <MultimodalResponse />
+                            ) : (
+                                <div className="p-3">
+                                    {msg.content}
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
@@ -139,5 +147,148 @@ export const TutorChatWidget = ({ isOpen = true, onClose, currentTopic, ragConte
                 </form>
             </div>
         </Card>
+    )
+}
+
+// Sub-component for Multimodal Response
+const MultimodalResponse = () => {
+    const [mode, setMode] = useState<"text" | "video" | "voice">("text")
+    const [isLoading, setIsLoading] = useState(false)
+    const [countdown, setCountdown] = useState(0)
+
+    useEffect(() => {
+        let timer: NodeJS.Timeout
+        if (mode === "video") {
+            setIsLoading(true)
+            setCountdown(12)
+            timer = setInterval(() => {
+                setCountdown((prev) => {
+                    if (prev <= 1) {
+                        clearInterval(timer)
+                        setIsLoading(false)
+                        return 0
+                    }
+                    return prev - 1
+                })
+            }, 1000)
+        } else if (mode === "voice") {
+            setIsLoading(true)
+            setCountdown(8)
+            timer = setInterval(() => {
+                setCountdown((prev) => {
+                    if (prev <= 1) {
+                        clearInterval(timer)
+                        setIsLoading(false)
+                        return 0
+                    }
+                    return prev - 1
+                })
+            }, 1000)
+        } else {
+            setIsLoading(false)
+            setCountdown(0)
+        }
+
+        return () => {
+            if (timer) clearInterval(timer)
+        }
+    }, [mode])
+
+    return (
+        <div className="flex flex-col w-full min-w-[300px]">
+            {/* Content Area */}
+            <div className="p-0">
+                {isLoading ? (
+                    <div className="flex flex-col items-center justify-center p-8 bg-gray-50 min-h-[200px] gap-4">
+                        <Loader2 className="w-8 h-8 text-eliza-blue animate-spin" />
+                        <p className="text-sm font-medium text-gray-600">
+                            Generating {mode} content...
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        {mode === "text" && (
+                            <div className="p-4 text-sm leading-relaxed text-gray-700 bg-white">
+                                <p className="mb-2 font-semibold text-eliza-blue">The Fundamental Theorem of Calculus:</p>
+                                <p>
+                                    The Fundamental Theorem of Calculus bridges the gap between differentiation and integration.
+                                    It states that if f is continuous on [a, b] and F is its antiderivative, then:
+                                    ∫(a to b) f(x) dx = F(b) - F(a).
+                                </p>
+                                <p className="mt-2">
+                                    This means accumulation (integration) is the inverse of instantaneous change (differentiation).
+                                </p>
+                                <p className="mt-2 text-xs text-gray-500 italic">
+                                    (This is a hardcoded sample explanation provided by your AI Tutor.)
+                                </p>
+                            </div>
+                        )}
+
+                        {mode === "video" && (
+                            <div className="flex flex-col gap-2">
+                                <p className="text-xs text-gray-500 font-medium">Video: Fundamental Theorem of Calculus</p>
+                                <div className="bg-black aspect-video flex items-center justify-center relative w-full rounded-lg overflow-hidden">
+                                    <video
+                                        controls
+                                        className="w-full h-full object-cover"
+                                        src="/src/fundamental-theorem-calculus.mp4"
+                                    >
+                                        Your browser does not support the video tag.
+                                    </video>
+                                </div>
+                            </div>
+                        )}
+
+                        {mode === "voice" && (
+                            <div className="p-6 bg-gray-50 flex flex-col items-center justify-center space-y-4">
+                                <div className="w-16 h-16 rounded-full bg-eliza-purple/10 flex items-center justify-center animate-pulse">
+                                    <Volume2 className="w-8 h-8 text-eliza-purple" />
+                                </div>
+                                <p className="text-sm font-medium text-gray-600">Playing Audio Explanation...</p>
+                                <audio controls className="w-full max-w-[240px]">
+                                    {/* Short sample audio */}
+                                    <source src="https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav" type="audio/wav" />
+                                    Your browser does not support the audio element.
+                                </audio>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+
+            {/* Mode Switcher */}
+            <div className="flex border-t divide-x">
+                <button
+                    onClick={() => setMode("text")}
+                    className={cn(
+                        "flex-1 py-3 px-2 text-xs font-medium flex items-center justify-center gap-2 transition-colors hover:bg-gray-50",
+                        mode === "text" ? "bg-eliza-blue/5 text-eliza-blue" : "text-gray-500"
+                    )}
+                >
+                    <MessageSquare className="w-4 h-4" />
+                    Text
+                </button>
+                <button
+                    onClick={() => setMode("video")}
+                    className={cn(
+                        "flex-1 py-3 px-2 text-xs font-medium flex items-center justify-center gap-2 transition-colors hover:bg-gray-50",
+                        mode === "video" ? "bg-eliza-blue/5 text-eliza-blue" : "text-gray-500"
+                    )}
+                >
+                    <Play className="w-4 h-4" />
+                    Video
+                </button>
+                <button
+                    onClick={() => setMode("voice")}
+                    className={cn(
+                        "flex-1 py-3 px-2 text-xs font-medium flex items-center justify-center gap-2 transition-colors hover:bg-gray-50",
+                        mode === "voice" ? "bg-eliza-blue/5 text-eliza-blue" : "text-gray-500"
+                    )}
+                >
+                    <Volume2 className="w-4 h-4" />
+                    Voice
+                </button>
+            </div>
+        </div>
     )
 }

@@ -148,13 +148,6 @@ export default function StudentDashboard() {
             <p className="text-gray-500 mt-1">Ready to learn something new today?</p>
           </div>
 
-          <CreateCourseCard
-            title="Start a New Learning Journey"
-            description="Create your own or browse public courses"
-            characterImage={redCharacter}
-            onClick={handleStartJourney}
-            themeColor="eliza-red"
-          />
 
           {/* Syllabi Grid */}
           <h2 className="text-xl font-bold text-gray-900 mt-8 mb-4">My Courses</h2>

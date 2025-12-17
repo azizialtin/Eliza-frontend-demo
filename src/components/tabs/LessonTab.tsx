@@ -2,16 +2,18 @@
 // Displays content sections with personalized content support
 
 import React, { useState, useEffect } from 'react';
-import { useContentSections } from '@/hooks/useContentSections';
-import { useRequestPersonalizedSection } from '@/hooks/useContentSections';
+import { useContentSections, useRequestPersonalizedSection } from '@/hooks/useContentSections';
+import type { PersonalizedSectionRequest } from '@/types/content-sections';
 import { SectionList, SectionListSkeleton } from '@/components/sections/SectionList';
 import { PersonalizedSectionSidebar } from '@/components/sections/PersonalizedSectionSidebar';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, AlertCircle, Sparkles, Wand2, BookOpen } from 'lucide-react';
+import { Loader2, AlertCircle, Sparkles, Wand2, BookOpen, Bot } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { TutorChatWidget } from "@/components/student/TutorChatWidget";
 
 interface LessonTabProps {
   subchapterId: string;
@@ -26,6 +28,7 @@ export const LessonTab: React.FC<LessonTabProps> = ({
 }) => {
   const [activeSidebarSection, setActiveSidebarSection] = useState<string | null>(null);
   const [helpRequestSection, setHelpRequestSection] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Determine if we should poll:
   // - Poll when we've fetched successfully but got empty array (generation in progress)
@@ -185,7 +188,27 @@ export const LessonTab: React.FC<LessonTabProps> = ({
         </div>
       );
     } else {
-      // Not processing, just empty -> Show Generate Button
+      // Not processing, just empty
+
+      const { user } = useAuth(); // We need to import useAuth
+      const isTeacher = user?.role === "TEACHER" || user?.role === "ADMIN";
+
+      if (!isTeacher) {
+        return (
+          <div className={className}>
+            <div className="max-w-2xl mx-auto text-center py-20 px-6">
+              <div className="w-24 h-24 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
+                <BookOpen className="h-10 w-10 text-gray-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">Lesson Not Available</h3>
+              <p className="text-gray-500 mb-8 max-w-md mx-auto">
+                The content for this lesson hasn't been created yet. Please check back later.
+              </p>
+            </div>
+          </div>
+        )
+      }
+
       return (
         <div className={className}>
           <div className="max-w-2xl mx-auto text-center py-20 px-6">
@@ -243,6 +266,28 @@ export const LessonTab: React.FC<LessonTabProps> = ({
               This may take a few moments
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Tutor Chat Widget */}
+      <div className="fixed bottom-24 right-8 z-50 w-[400px] h-[600px] pointer-events-none">
+        <div className="pointer-events-auto h-full">
+          <TutorChatWidget
+            isOpen={isChatOpen}
+            onClose={() => setIsChatOpen(false)}
+            currentTopic="Lesson Help"
+          />
+        </div>
+      </div>
+      {!isChatOpen && (
+        <div className="fixed bottom-8 right-24 z-50">
+          <Button
+            onClick={() => setIsChatOpen(true)}
+            size="lg"
+            className="rounded-full shadow-lg bg-eliza-blue hover:bg-eliza-blue/90 text-white h-14 w-14 p-0 flex items-center justify-center animate-bounce-subtle"
+          >
+            <Bot className="w-8 h-8" />
+          </Button>
         </div>
       )}
     </div>

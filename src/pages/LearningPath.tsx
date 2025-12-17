@@ -166,7 +166,8 @@ export default function LearningPath() {
               <Card
                 key={chapter.id}
                 className={cn(
-                  "overflow-hidden border-l-4 hover:shadow-md transition-shadow duration-200",
+                  "overflow-hidden border-l-4 transition-all duration-200",
+                  chapter.is_published ? "hover:shadow-md" : "opacity-75 bg-gray-50",
                   getThemeColor(index)
                 )}
               >
@@ -177,38 +178,63 @@ export default function LearningPath() {
                         <span className="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">
                           Unit {index + 1}
                         </span>
+                        {!chapter.is_published && (
+                          <span className="flex items-center text-xs font-bold text-gray-500 border border-gray-200 px-2 py-1 rounded bg-white">
+                            <span className="mr-1">🔒</span> Locked
+                          </span>
+                        )}
+                        {chapter.is_published && hasSubchapters && (
+                          <span className="flex items-center text-xs font-bold text-green-600 border border-green-200 px-2 py-1 rounded bg-green-50">
+                            Published
+                          </span>
+                        )}
                       </div>
-                      <CardTitle className="font-brand text-xl mb-2">{chapter.title}</CardTitle>
+                      <CardTitle className="font-brand text-xl mb-2 text-gray-900">
+                        {chapter.title}
+                      </CardTitle>
                       <p className="text-gray-600 text-sm mb-4">
                         {description}
                       </p>
                     </div>
 
                     <div className="min-w-[160px]">
-                      {!hasSubchapters && (
-                        <Button
-                          onClick={() => handleGenerateChapter(chapter.id)}
-                          disabled={isGenerating}
-                          className="w-full bg-eliza-blue hover:bg-eliza-blue/90 text-white font-semibold shadow-sm"
-                        >
-                          {isGenerating ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Generating...
-                            </>
+                      {/* ONLY SHOW ACTIONS IF PUBLISHED */}
+                      {chapter.is_published ? (
+                        !hasSubchapters ? (
+                          !isTeacher ? (
+                            <Button variant="outline" disabled className="w-full opacity-75">
+                              No Content Yet
+                            </Button>
                           ) : (
-                            <>
-                              <Sparkles className="mr-2 h-4 w-4" />
-                              Generate Content
-                            </>
-                          )}
+                            <Button
+                              onClick={() => handleGenerateChapter(chapter.id)}
+                              disabled={isGenerating}
+                              className="w-full bg-eliza-blue hover:bg-eliza-blue/90 text-white font-semibold shadow-sm"
+                            >
+                              {isGenerating ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Generating...
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="mr-2 h-4 w-4" />
+                                  Generate Content
+                                </>
+                              )}
+                            </Button>
+                          )
+                        ) : null
+                      ) : (
+                        <Button variant="outline" disabled className="w-full opacity-50 cursor-not-allowed">
+                          Locked
                         </Button>
                       )}
                     </div>
                   </div>
 
-                  {/* Generated Subchapters List */}
-                  {hasSubchapters && (
+                  {/* Generated Subchapters List - Only if Published */}
+                  {chapter.is_published && hasSubchapters && (
                     <div className="mt-6 pt-6 border-t border-gray-100">
                       <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
                         <BookOpen className="h-4 w-4 mr-2 text-gray-500" />
@@ -245,48 +271,47 @@ export default function LearningPath() {
                                     <span className="sr-only">Start Lesson</span>
                                   </Button>
                                 ) : (
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    disabled={isBlogGenerating}
-                                    onClick={async () => {
-                                      try {
-                                        setGeneratingChapters(prev => new Set(prev).add(sub.id))
-                                        await apiClient.generateChapterBlog(sub.id)
-                                        toast({
-                                          title: "Generation Started",
-                                          description: "Your lesson content is being created. The list will refresh shortly.",
-                                        })
+                                  !isTeacher ? (
+                                    <span className="text-xs text-gray-400 italic">Coming soon</span>
+                                  ) : (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      disabled={isBlogGenerating}
+                                      onClick={async () => {
+                                        try {
+                                          setGeneratingChapters(prev => new Set(prev).add(sub.id))
+                                          await apiClient.generateChapterBlog(sub.id)
+                                          toast({
+                                            title: "Generation Started",
+                                            description: "Your lesson content is being created. The list will refresh shortly.",
+                                          })
 
-                                        // Refresh the chapters list to update the button status
-                                        setTimeout(() => fetchChapters(), 2000) // Small delay to let DB settle if async
+                                          setTimeout(() => fetchChapters(), 2000)
 
-                                      } catch (e) {
-                                        toast({
-                                          title: "Failed",
-                                          description: "Could not generate content.",
-                                          variant: "destructive"
-                                        })
-                                      } finally {
-                                        // Don't clear immediately if we want to show loading until refresh?
-                                        // But refresh is async.
-                                        // Let's clear after a bit or let fetching clear it if we tracked state differently.
-                                        // For now, clear it.
-                                        setGeneratingChapters(prev => {
-                                          const next = new Set(prev);
-                                          next.delete(sub.id);
-                                          return next;
-                                        })
-                                      }
-                                    }} className="bg-gray-100 hover:bg-gray-200 text-gray-700 h-7 text-xs px-3"
-                                  >
-                                    {isBlogGenerating ? (
-                                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                                    ) : (
-                                      <Sparkles className="h-3 w-3 mr-1" />
-                                    )}
-                                    {isBlogGenerating ? "Creating..." : "Generate"}
-                                  </Button>
+                                        } catch (e) {
+                                          toast({
+                                            title: "Failed",
+                                            description: "Could not generate content.",
+                                            variant: "destructive"
+                                          })
+                                        } finally {
+                                          setGeneratingChapters(prev => {
+                                            const next = new Set(prev);
+                                            next.delete(sub.id);
+                                            return next;
+                                          })
+                                        }
+                                      }} className="bg-gray-100 hover:bg-gray-200 text-gray-700 h-7 text-xs px-3"
+                                    >
+                                      {isBlogGenerating ? (
+                                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                      ) : (
+                                        <Sparkles className="h-3 w-3 mr-1" />
+                                      )}
+                                      {isBlogGenerating ? "Creating..." : "Generate"}
+                                    </Button>
+                                  )
                                 )}
                               </div>
                             </div>

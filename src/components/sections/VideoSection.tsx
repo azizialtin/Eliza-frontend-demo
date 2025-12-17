@@ -38,16 +38,20 @@ export const VideoSection = ({ section, className, onVideoProgress }: VideoSecti
 
   const isProcessing = section.media_versions?.some(v => v.status === "PENDING" || v.status === "PROCESSING") || isAiGenerating
 
+  // Local override for AI generated video
+  const [overrideUrl, setOverrideUrl] = useState<string | null>(null)
+
   const handleAiVideoEdit = async () => {
     if (!aiPrompt.trim()) return;
     setIsAiGenerating(true);
     try {
-      await apiClient.aiEditVideo(section.id, aiPrompt);
+      const newUrl = await apiClient.aiEditVideo(section.id, aiPrompt);
+      setOverrideUrl(newUrl);
       setIsAiDialogOpen(false);
       setAiPrompt("");
       toast({
-        title: "Video Generation Started",
-        description: "It may take a few moments for the new video to appear.",
+        title: "Video Updated",
+        description: "Your new video is ready.",
       });
       // In a real app, we'd refetch or the server would push an update. 
       // Here we just rely on the 'isAiGenerating' state or simulated delay.
@@ -96,12 +100,11 @@ export const VideoSection = ({ section, className, onVideoProgress }: VideoSecti
         "relative rounded-2xl overflow-hidden bg-black aspect-video shadow-lg ring-1 ring-black/5",
         isProcessing && "opacity-90 pointer-events-none"
       )}>
-        {currentVersion?.media_url ? (
+        {overrideUrl || currentVersion?.media_url ? (
           <video
-            src={currentVersion.media_url}
+            src={overrideUrl || currentVersion?.media_url}
             controls
             className="w-full h-full object-cover"
-            poster={currentVersion.thumbnail_url}
           />
         ) : (
           <div className="flex flex-col items-center justify-center w-full h-full text-gray-400 bg-gray-900">

@@ -12,6 +12,7 @@ export { MANAGER_URL, CONTENT_URL, VIDEO_URL, RAG_URL, QUIZ_URL }
 
 // Import content section types
 import type { ContentSection, PersonalizedSectionRequest } from "@/types/content-sections"
+import albanianVideo from "../riemann-sum-albanian-FINAL.mp4"
 
 // Auth token management
 export const setAuthToken = (token: string | null) => {
@@ -289,6 +290,8 @@ export class ApiClient {
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl
     this.loadMockState();
+    this.loadMockStudents();
+    this.loadMockContent();
   }
 
   private async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -448,6 +451,15 @@ export class ApiClient {
   private mockSyllabusState = new Map<string, Chapter[]>();
   private MOCK_STORAGE_KEY = "aula_mock_syllabus_state";
 
+  // Mock Students State
+  private mockStudentState = new Map<string, User[]>();
+  private MOCK_STUDENTS_KEY = "aula_mock_students_state";
+
+  // Mock Content State (Blogs/Videos)
+  // Key: subchapterId, Value: List of ContentSection
+  private mockContentState = new Map<string, ContentSection[]>();
+  private MOCK_CONTENT_KEY = "aula_mock_content_state";
+
   private saveMockState() {
     if (typeof window === "undefined") return;
     try {
@@ -472,27 +484,88 @@ export class ApiClient {
     }
   }
 
+  private saveMockStudents() {
+    if (typeof window === "undefined") return;
+    try {
+      const obj = Object.fromEntries(this.mockStudentState);
+      localStorage.setItem(this.MOCK_STUDENTS_KEY, JSON.stringify(obj));
+    } catch (e) {
+      console.error("Failed to save mock students", e);
+    }
+  }
+
+  private loadMockStudents() {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem(this.MOCK_STUDENTS_KEY);
+      if (stored) {
+        const obj = JSON.parse(stored);
+        this.mockStudentState = new Map(Object.entries(obj));
+        console.log("🧠 Loaded mock students from localStorage", this.mockStudentState);
+      }
+    } catch (e) {
+      console.error("Failed to load mock students", e);
+    }
+  }
+
+  private saveMockContent() {
+    if (typeof window === "undefined") return;
+    try {
+      const obj = Object.fromEntries(this.mockContentState);
+      localStorage.setItem(this.MOCK_CONTENT_KEY, JSON.stringify(obj));
+    } catch (e) {
+      console.error("Failed to save mock content", e);
+    }
+  }
+
+  private loadMockContent() {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem(this.MOCK_CONTENT_KEY);
+      if (stored) {
+        const obj = JSON.parse(stored);
+        this.mockContentState = new Map(Object.entries(obj));
+        console.log("🧠 Loaded mock content from localStorage", this.mockContentState);
+      }
+    } catch (e) {
+      console.error("Failed to load mock content", e);
+    }
+  }
+
   // Chapters (Mapped from Topics) - HARDCODED FOR DEMO
   async getSyllabusChapters(syllabusId: string): Promise<Chapter[]> {
-    // 1. Try to fetch from Backend
+    // 1. Check in-memory state (Priority: Frontend Mock > Backend)
+    if (this.mockSyllabusState.has(syllabusId)) {
+      console.log(`🧠 Returning in-memory mock topics for ${syllabusId} (Cached)`);
+      return this.mockSyllabusState.get(syllabusId)!;
+    }
+
+    // 2. Try to fetch from Backend
     try {
       const topics = await this.request<BackendTopic[]>(`/api/v1/pdfs/${syllabusId}/topics`);
       if (topics && topics.length > 0) {
         console.log(`✅ Fetched ${topics.length} topics for syllabus ${syllabusId}`);
-        return topics.map(topic => this.mapTopicToChapter(topic));
+        const chapters = topics.map(topic => this.mapTopicToChapter(topic));
+
+        // CACHE BACKEND STATE TO MOCK STATE
+        // This ensures that if we later edit (createChapter), we are editing this list, not an empty one.
+        this.mockSyllabusState.set(syllabusId, chapters);
+        this.saveMockState();
+
+        return chapters;
       }
     } catch (error) {
       console.warn("Backend fetch failed, checking for fallback...", error);
     }
 
-    // 2. Check in-memory state
-    if (this.mockSyllabusState.has(syllabusId)) {
-      console.log(`🧠 Returning in-memory mock topics for ${syllabusId}`);
-      return this.mockSyllabusState.get(syllabusId)!;
-    }
+    // 3. Fallback: Initialize with hardcoded data
 
     // 3. Fallback: Initialize with hardcoded data
     console.log(`📚 Initializing hardcoded topics for syllabus ${syllabusId}`);
+
+    // Artificial delay to simulate topic extraction (10 seconds)
+    console.log("⏳ Simulating extraction delay...");
+    await new Promise(resolve => setTimeout(resolve, 10000));
 
     // Hardcoded structure based on provided data with enhanced descriptions
     const hardcodedTopics = [
@@ -616,7 +689,7 @@ export class ApiClient {
         is_generated: true,
         created_at: new Date().toISOString(),
         subchapters: subchapters,
-        is_published: false
+        is_published: false // Default to unpublished
       };
     });
 
@@ -787,6 +860,18 @@ export class ApiClient {
 
   async updateSectionContent(sectionId: string, newBody: string): Promise<ContentSection> {
     console.log(`📝 Mock update section ${sectionId} with body length ${newBody.length}`);
+
+    // Find section in mockContentState
+    for (const [subId, sections] of this.mockContentState.entries()) {
+      const section = sections.find(s => s.id === sectionId);
+      if (section) {
+        section.body = newBody;
+        section.updated_at = new Date().toISOString();
+        this.saveMockContent(); // Save persistence
+        return Promise.resolve({ ...section });
+      }
+    }
+
     return Promise.resolve({
       id: sectionId,
       body: newBody,
@@ -799,27 +884,144 @@ export class ApiClient {
     // Simulate AI delay
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Simple mock transformation
-    return `[AI Edited: ${prompt}]\n\n${currentBody}\n\n(The content has been updated based on your request.)`;
+    const newContent = `### Hyrje: Problemi i “Sipërfaqes nën Grafikun”
+
+Imagjino sikur po ngisni një makinë dhe shpejtësimatësi juaj është i prishur. Ju e dini sa shpejt po lëviznit në momente të ndryshme, por doni të dini sa larg keni udhëtuar.
+
+Nëse do të vozisnit me një shpejtësi konstante prej 60 milje në orë për 2 orë, është e thjeshtë:  
+60 × 2 = 120 milje. Por jeta reale nuk është konstante. Ju përshpejtoni, ngadalësoni, ndaloni për trafik.
+
+Ky është problemi thelbësor i Integrimit në kalkulus. Ai ka të bëjë me mbledhjen e sasive shumë të vogla dhe të ndryshueshme për të gjetur një total.`;
+
+    // Update State
+    for (const [subId, sections] of this.mockContentState.entries()) {
+      const section = sections.find(s => s.id === sectionId);
+      if (section) {
+        section.body = newContent;
+        section.updated_at = new Date().toISOString();
+        this.saveMockContent();
+        break;
+      }
+    }
+
+    return newContent;
   }
 
-  async aiEditVideo(sectionId: string, prompt: string): Promise<void> {
+  async aiEditVideo(sectionId: string, prompt: string): Promise<string> {
     console.log(`🎥 Mock AI video edit for section ${sectionId} with prompt: "${prompt}"`);
     // Simulate AI delay
     await new Promise(resolve => setTimeout(resolve, 1000));
-    return Promise.resolve();
+    return Promise.resolve(albanianVideo);
   }
 
   async getStudentContentSections(subchapterId: string): Promise<ContentSection[]> {
+    // 0. Check Persistence
+    if (this.mockContentState.has(subchapterId)) {
+      console.log(`🧠 Returning PERSISTED content for subchapter: ${subchapterId}`);
+      return this.mockContentState.get(subchapterId)!;
+    }
+
     // HARDCODED content for ALL blogs (demo mode)
+    // ... (rest of generation logic) ...
+    // At the end, insert into map and save.
+
     if (true) {
       console.log(`📄 Returning hardcoded blog content for subchapter: ${subchapterId}`);
-      const hardcodedBlog = {
-        title: "What Exactly *Is* An Integral? (The Big Idea)",
-        content_markdown: `
-# What Exactly *Is* An Integral? (The Big Idea)
 
-## Introduction: The "Area Under the Curve" Problem
+      // 1. Determine if this is the 2nd chapter (logic to find index)
+      let isSecondChapter = false;
+      for (const [sId, topics] of this.mockSyllabusState.entries()) {
+        for (const topic of topics) {
+          if (topic.subchapters) {
+            const index = topic.subchapters.findIndex(s => s.id === subchapterId);
+            if (index === 1) { // 2nd chapter (0-indexed)
+              isSecondChapter = true;
+            }
+            if (index !== -1) break;
+          }
+        }
+        if (isSecondChapter) break;
+      }
+
+      let hardcodedBlog: any;
+
+      if (isSecondChapter) {
+        console.log("📄 Using NEW hardcoded blog for second chapter");
+        hardcodedBlog = {
+          title: "Turning Intuition into Calculation: Unlocking the Power of Integration",
+          content_markdown: `Ever looked at a curve and wondered about the area tucked underneath it? Or perhaps you've considered how a rate of change can be 'undone' to reveal the original quantity? If so, you've already had a glimpse into the intuitive world of integration. In this chapter, we're going to bridge that intuition with the powerful, practical methods that allow us to calculate integrals with precision. It's less about scary equations and more about turning your 'what if' into a 'here's how.'
+
+## The Great Reversal: Antiderivatives
+
+Think back to differentiation. You started with a function and found its rate of change. Now, imagine doing the opposite: you have the rate of change, and you want to find the original function. This 'undoing' is the core idea behind **antidifferentiation**, and the result is called an **antiderivative**.
+
+It's like having a map of a journey's speed at every point and wanting to know the path taken. We're reversing the process!
+
+## Basic Integration Rules: Your Toolkit for Calculation
+
+Just like differentiation had its rules, so does integration. These aren't meant to complicate things, but to give you a systematic way to find antiderivatives. Let's dive into some fundamental ones:
+
+### 1. The Power Rule: Undoing the Power
+
+Remember the power rule for differentiation? You multiplied by the exponent and subtracted one. For integration, we do the opposite: **add one to the exponent and then divide by the new exponent.**
+
+If you have \`x^n\`, its integral is \`(x^(n+1))/(n+1)\` (as long as \`n\` isn't -1).
+
+### 2. Constants: The Invisible Shifters
+
+When you differentiate a constant, it disappears. This means that when you integrate, there could have been *any* constant there originally. That's why we always add a "+ C" to our antiderivatives. This **constant of integration** accounts for all possible original functions.
+
+For example, the antiderivative of \`2x\` is \`x^2 + C\`, because the derivative of \`x^2 + 5\` is \`2x\`, and so is \`x^2 - 3\`, or \`x^2 + any number\`.
+
+{{video_placeholder_1}}
+
+### 3. Linearity: Keeping it Tidy
+
+Integration plays nicely with addition, subtraction, and constant multiples. This is known as **linearity**. It means:
+
+* The integral of a sum is the sum of the integrals.
+* The integral of a constant times a function is the constant times the integral of the function.
+
+This allows us to break down complex integrals into simpler, manageable pieces.
+
+## Definite Integrals: Pinpointing the Area
+
+So far, we've talked about indefinite integrals, which give us a family of functions (thanks to the "+ C"). But what if we want to find the *exact* area under a curve between two specific points? That's where **definite integrals** come in.
+
+Instead of a "+ C", we'll evaluate the antiderivative at the upper limit and subtract its value at the lower limit. This process gives us a single, numerical answer – often representing an area, volume, or total change.
+
+{{video_placeholder_2}}
+
+## The Fundamental Theorem of Calculus: The Big Reveal
+
+This might sound intimidating, but trust us, it's one of the most elegant and powerful ideas in mathematics. The **Fundamental Theorem of Calculus (FTC)** simply states the incredible connection between differentiation and integration.
+
+It essentially tells us that finding the net change of a quantity (through a definite integral) can be done by simply evaluating the antiderivative of its rate of change at the start and end points. It confirms that integration and differentiation are inverse operations – two sides of the same coin!
+
+No complicated limits or infinite sums needed for definite integrals (once you have an antiderivative!). Just pure, elegant calculation.
+
+## From Intuition to Calculation
+
+By understanding antiderivatives and these basic rules, you're no longer just guessing at areas or reversing rates in your head. You now have the fundamental tools to *calculate* them. The journey from observing a curve to precisely quantifying the space it encloses is a truly empowering one, and you've just taken your first big step.
+
+Ready to put these rules into practice? Let's go!`,
+          video_placeholders: [
+            {
+              url: "/src/power-rule-integration.mp4",
+              description: "Explaining the Power Rule in integration with examples.",
+              expected_length: "3 min"
+            },
+            {
+              url: "/src/fundamental-theorem-calculus.mp4",
+              description: "Visualizing definite integrals and the Fundamental Theorem of Calculus.",
+              expected_length: "7 min"
+            }
+          ]
+        };
+      } else {
+        hardcodedBlog = {
+          title: "What Exactly *Is* An Integral? (The Big Idea)",
+          content_markdown: `## Introduction: The "Area Under the Curve" Problem
 
 Imagine you're driving a car, and your speedometer is broken. You know how fast you were going at various moments, but you want to know **how far you've traveled**. 
 
@@ -870,13 +1072,14 @@ Integrals aren't just for math class. They are everywhere:
 
 Integration is the tool we use to move from the "instantaneous" world of rates (derivatives) back to the "accumulated" world of totals.
         `,
-        video_placeholders: [
-          "/riemann-sum-pipeline.mp4",
-          "/definite-integral-demo.mp4",
-          "/indefinite-integral-demo.mp4",
-          "/integral-notation-breakdown.mp4"
-        ]
-      };
+          video_placeholders: [
+            "/riemann-sum-pipeline.mp4",
+            "/definite-integral-demo.mp4",
+            "/indefinite-integral-demo.mp4",
+            "/integral-notation-breakdown.mp4"
+          ]
+        };
+      }
 
       // Helper to generate UUIDs
       const generateId = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
@@ -900,7 +1103,18 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
         if (match) {
           // It's a video placeholder
           const videoIndex = parseInt(match[1]) - 1; // 1-based index to 0-based
-          const videoUrl = hardcodedBlog.video_placeholders[videoIndex];
+          const videoItem = hardcodedBlog.video_placeholders[videoIndex];
+
+          let videoUrl = "";
+          let videoDescription = "";
+
+          if (typeof videoItem === 'string') {
+            videoUrl = videoItem;
+          } else if (videoItem && typeof videoItem === 'object') {
+            videoUrl = videoItem.url;
+            videoDescription = videoItem.description || "";
+          }
+
           console.log(`🎥 Found video placeholder: ${match[0]}, index: ${videoIndex}, url: ${videoUrl}`);
 
           if (videoUrl) {
@@ -908,10 +1122,10 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
             sections.push({
               id: sectionId,
               subchapter_id: subchapterId,
-              title: `Video Demo ${videoIndex + 1}`,
+              title: videoDescription ? "Video Explanation" : `Video Demo ${videoIndex + 1}`,
               content_type: "VIDEO",
               order_index: orderIndex++,
-              body: "", // No text body for video sections
+              body: videoDescription, // Use description if available
               is_teacher_locked: false,
               source_document_ids: [],
               source_chunk_ids: [],
@@ -952,6 +1166,11 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
       });
 
       console.log(`✅ Generated ${sections.length} sections`);
+
+      // PERSIST FOR FUTURE
+      this.mockContentState.set(subchapterId, sections);
+      this.saveMockContent();
+
       return sections;
     }
 
@@ -1122,11 +1341,37 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
   }
 
   async getTopicChapters(topicId: string): Promise<BackendChapter[]> {
+    // 1. Check in-memory state (Priority: Mock > Backend)
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      const topic = topics.find(t => t.id === topicId);
+      if (topic) {
+        console.log(`🧠 Returning in-memory mock lessons for topic ${topicId} (Cached)`);
+        // We need to map the frontend "Subchapter" structure back to "BackendChapter" structure if needed
+        // Or just return the subchapters as is, assuming they are compatible enough for the caller in LearningPath
+        // LearningPath expects keys: id, topic_id (mapped from chapter_id), title, order, created_at, description, has_blog, has_quiz
+
+        return (topic.subchapters || []).map(sub => ({
+          id: sub.id,
+          topic_id: topic.id,
+          title: sub.title,
+          description: sub.text_description || "",
+          order: sub.order_index,
+          created_at: sub.created_at,
+          has_blog: sub.has_blog,
+          has_quiz: sub.has_quiz
+        }));
+      }
+    }
+
     return this.request<BackendChapter[]>(`/api/v1/topics/${topicId}/chapters`)
   }
 
   async generateChapterBlog(chapterId: string): Promise<any> {
     console.log(`✨ Mock generate blog for chapter ${chapterId}`);
+
+    // Artificial delay (10 seconds)
+    console.log("⏳ Simulating blog generation delay...");
+    await new Promise(resolve => setTimeout(resolve, 10000));
 
     // Update state in mockSyllabusState
     for (const [sId, topics] of this.mockSyllabusState.entries()) {
@@ -1174,13 +1419,27 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
   getBlackboardVideoUrl(subchapterId: string): string { return "" }
   async fetchVideoBlob(subchapterId: string): Promise<Blob> { throw new Error("Not implemented") }
   async generateSubchapterVideo(subchapterId: string, options?: { initial_model?: string; voice_id?: string }): Promise<any> {
-    const queryParams = new URLSearchParams()
-    if (options?.initial_model) queryParams.append('model', options.initial_model)
-    if (options?.voice_id) queryParams.append('voice_id', options.voice_id)
+    console.log(`✨ Mock generate video for subchapter ${subchapterId}`);
 
-    return this.request(`/api/v1/subchapters/${subchapterId}/generate_video?${queryParams.toString()}`, {
-      method: 'POST'
-    })
+    // Artificial delay (15 seconds)
+    console.log("⏳ Simulating video generation delay...");
+    await new Promise(resolve => setTimeout(resolve, 15000));
+
+    // Update mock state
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      for (const topic of topics) {
+        const sub = topic.subchapters?.find(s => s.id === subchapterId);
+        if (sub) {
+          sub.video_status = "COMPLETED";
+          sub.video_progress = 100;
+          this.saveMockState();
+          return Promise.resolve({ success: true, message: "Video generated successfully (mock)" });
+        }
+      }
+    }
+
+    // Fallback if not found in mock state (or just return success for stateless)
+    return Promise.resolve({ success: true, message: "Video generated successfully (fallback)" });
   }
   async generateChapterVideos(chapterId: string): Promise<any> { return {} }
 
@@ -1197,7 +1456,64 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
 
   async getPublicSyllabi(skip = 0, limit = 100): Promise<Syllabus[]> { return [] }
   async enrollInSyllabus(syllabusId: string): Promise<any> { return {} }
-  async getEnrolledSyllabi(): Promise<any[]> { return this.getSyllabi() }
+  async getEnrolledSyllabi(): Promise<any[]> {
+    const user = this.getCurrentUser();
+
+    // If student, return only "enrolled" mock syllabi
+    if (user?.role === "STUDENT") {
+      const studentEmail = user.email.trim().toLowerCase();
+      console.log(`🎓 [getEnrolledSyllabi] Fetching for student: '${studentEmail}'`);
+      console.log(`🧠 [getEnrolledSyllabi] Current mockStudentState keys:`, Array.from(this.mockStudentState.keys()));
+
+      const enrolledSyllabusIds = new Set<string>();
+
+      // Check mock state for enrollments by EMAIL
+      // We iterate through the map of [syllabusId, Student[]]
+      for (const [syllabusId, students] of this.mockStudentState.entries()) {
+        // Case-insensitive email check
+        const isEnrolled = students.some(s => {
+          const match = s.email.trim().toLowerCase() === studentEmail;
+          // if (match) console.log(`✅ Match found in syllabus ${syllabusId} for ${s.email}`);
+          return match;
+        });
+
+        if (isEnrolled) {
+          enrolledSyllabusIds.add(syllabusId);
+        }
+      }
+
+      console.log("📚 [getEnrolledSyllabi] Found enrolled IDs:", Array.from(enrolledSyllabusIds));
+
+      if (enrolledSyllabusIds.size === 0) {
+        // console.warn("⚠️ No enrollments found for this student.");
+        return [];
+      }
+
+      // Fetch each syllabus individually by ID
+      // This is necessary because getSyllabi() likely only returns *owned* files
+      const syllabiPromises = Array.from(enrolledSyllabusIds).map(async (id) => {
+        try {
+          // Try to fetch real details
+          console.log(`🔄 [getEnrolledSyllabi] Fetching details for ${id}`);
+          return await this.getSyllabus(id);
+        } catch (e) {
+          console.warn(`⚠️ Failed to fetch syllabus ${id} details (might be restricted or deleted):`, e);
+          // Fallback: If we can't fetch it, we can't show it properly.
+          // OR we could return a placeholder if we really wanted to persist the "enrollment"
+          // For now, let's omit it or return a mock.
+          return null;
+        }
+      });
+
+      const results = await Promise.all(syllabiPromises);
+      const filtered = results.filter(s => s !== null);
+
+      console.log(`📚 Returning ${filtered.length} enrolled syllabi (fetched individually)`);
+      return filtered;
+    }
+
+    return this.getSyllabi();
+  }
   async getSyllabusProgress(syllabusId: string, studentId?: string): Promise<any> {
     // If we have a stats endpoint, we could use that, but "progress" is usually per-student.
     // For now, let's keep the mock or try to use the new stats endpoint if appropriate,
@@ -1211,26 +1527,58 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     }
   }
   async addStudentToSyllabus(syllabusId: string, studentEmail: string): Promise<any> {
-    const formData = new FormData();
-    formData.append("email", studentEmail);
-    return this.request(`/api/v1/pdfs/${syllabusId}/students`, {
-      method: "POST",
-      body: formData
-    });
+    // MOCK ADD STUDENT
+    const emailToAdd = studentEmail.trim();
+    console.log(`➕ Adding student '${emailToAdd}' to syllabus ${syllabusId}`);
+
+    const students = this.mockStudentState.get(syllabusId) || [];
+
+    // Check if already exists
+    if (students.find(s => s.email.toLowerCase() === emailToAdd.toLowerCase())) {
+      console.log("⚠️ Student already invited");
+      return { success: true, message: "Student already invited" };
+    }
+
+    const newStudent: User = {
+      id: `student-${Date.now()}`,
+      email: emailToAdd,
+      first_name: emailToAdd.split("@")[0],
+      last_name: "",
+      role: "STUDENT",
+      school_id: "default",
+      preferred_language: "en",
+      is_active: false, // Invited but not active
+      created_at: new Date().toISOString()
+    };
+
+    students.push(newStudent);
+    this.mockStudentState.set(syllabusId, students);
+    this.saveMockStudents();
+    console.log(`✅ Saved mock students for syllabus ${syllabusId}. Count: ${students.length}`);
+
+    return { success: true, message: "Student invited successfully" };
   }
 
   async getSyllabusStudents(syllabusId: string): Promise<User[]> {
-    return this.request<User[]>(`/api/v1/pdfs/${syllabusId}/students`);
+    if (this.mockStudentState.has(syllabusId)) {
+      return this.mockStudentState.get(syllabusId)!;
+    }
+    // Return empty if not found
+    return [];
   }
 
   async removeStudentFromSyllabus(syllabusId: string, studentId: string): Promise<any> {
-    return this.request(`/api/v1/pdfs/${syllabusId}/students/${studentId}`, {
-      method: "DELETE"
-    });
+    const students = this.mockStudentState.get(syllabusId) || [];
+    const index = students.findIndex(s => s.id === studentId);
+    if (index !== -1) {
+      students.splice(index, 1);
+      this.saveMockStudents();
+    }
+    return { success: true };
   }
 
   async getSyllabusStats(syllabusId: string): Promise<any> {
-    return this.request(`/api/v1/pdfs/${syllabusId}/stats`);
+    return this.request(`/ api / v1 / pdfs / ${syllabusId}/stats`);
   }
 
   async reorderChapters(syllabusId: string, chapterIds: string[]): Promise<any> { return {} }

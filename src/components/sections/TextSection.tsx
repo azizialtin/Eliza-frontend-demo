@@ -205,13 +205,15 @@ const TextSectionContent: React.FC<TextSectionProps> = ({ section, className, on
     setIsAiGenerating(true);
     try {
       // Mock AI call
+      console.log("🚀 Sending AI Edit request...");
       const newText = await apiClient.aiEditSection(section.id, aiPrompt, editBody);
+      console.log("✅ Received AI Edit response:", newText);
       setEditBody(newText);
       setIsAiDialogOpen(false);
       setAiPrompt("");
       toast({
         title: "AI Update Applied",
-        description: "Review the changes and click Save to confirm.",
+        description: `Content updated. Start: "${newText.substring(0, 50)}..."`,
       });
     } catch (error) {
       toast({
