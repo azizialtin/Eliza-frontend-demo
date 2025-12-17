@@ -13,7 +13,8 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { EngagementChart } from "@/components/dashboard/analytics/EngagementChart";
 import { MasteryHeatmap } from "@/components/dashboard/analytics/MasteryHeatmap";
-import { ClassLeaderboard } from "@/components/dashboard/analytics/ClassLeaderboard";
+import { ClassReviewTable } from "@/components/dashboard/analytics/ClassReviewTable";
+import { ActionableInsights } from "@/components/dashboard/analytics/ActionableInsights";
 import { calculateLeaderboard, MOCK_CLASSES } from "@/lib/mock-gamification";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 
@@ -139,13 +140,18 @@ export default function TeacherDashboard() {
           <MasteryHeatmap classId={selectedClass} />
         </div>
 
-        {/* Leaderboard Section - Full Width */}
-        <div className="w-full pb-20">
-          <ClassLeaderboard
+        {/* Class Review Table - Full Width */}
+        <div className="w-full mb-8">
+          <ClassReviewTable
             leaderboardData={leaderboardData}
             isLoading={loadingLb}
-            variant="default" // Explicitly Teacher Mode
+            classId={selectedClass}
           />
+        </div>
+
+        {/* Actionable Insights - Two Columns */}
+        <div className="w-full pb-20">
+          <ActionableInsights classId={selectedClass} />
         </div>
 
       </main>

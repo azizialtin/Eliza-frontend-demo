@@ -1,0 +1,17 @@
+"Objective: Provide a clear, aggregated summary of performance and pinpoint specific gaps so the teacher can intervene",,,,,,,
+,,,,,,,
+The teacher dashboard should have two parts: Part I overall class review; Actionable Insights,,,,,,,
+,,,,,,,
+Class Review,,,,,,,
+Student Name,Total Points,Streak (Days),Avg Difficulty (D),Interactions (N),Exercise  Attempt,No Correct answers,Status Flag
+Student A,"1,250",5 Days,3.2 (Hard),12,9,8,On Track
+Student B,800,1 Day,1.5 (Easy),45,42,27,High Help Needed
+Student C,"1,100",10 Days,2.0 (Med),5,2,2,Consistent
+,,,,,,,
+Avg Difficulty: Helps identify students coasting on easy problems vs. those pushing themselves,,,,,,,
+Interactions N: High interactions with low mastery might indicate a student is trying hard but confused,,,,,,,
+,,,,,,,
+Actionable Insights:,,,,,,,
+Most common Errors (list of exercises that were mostly answered wrong by the students),,,,,,,
+"Chapter 5 - Exercise 7, 8",,,,,,,
+Most common Promts (list of common words/concept that were mostly answered  by the students),,,,,,,

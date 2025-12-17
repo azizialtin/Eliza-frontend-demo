@@ -1,0 +1,11 @@
+student_id,course_id,log_id,timestap_start,timestamp_end,chapter_number,activity_type,did_student_prompt,prompt,input_prompt_modality,output_promt_modality,content_id,student_answer
+00000000001,0000001',,,,1,chapter_review,TRUE/FALSE,,text,video,,
+00000000001,0000001',,,,1,self_challenge,TRUE/FALSE,,text,audio,,
+00000000001,0000001',,,,1,extra_challenge,TRUE/FALSE,,audio,text,,
+00000000001,0000001',,,,1,test_simulation,TRUE/FALSE,,text,video,,
+,,,,,,,,,,,,
+,,,,,,,,,,,,
+,,,,,,,,,,,,
+,,,,,,,,,,,,
+,,,,,,,,,,,,
+,,,,,,,,what about audio prompts? they need to be converted in text first?!!,,,,
