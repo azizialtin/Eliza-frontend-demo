@@ -244,3 +244,64 @@ export interface QuizFilters {
   subchapter_id?: string;
   document_id?: string;
 }
+
+export interface AnswerResponse {
+  is_correct: boolean;
+  explanation: string;
+  correct_answer?: string;
+  next_question?: QuizQuestion | null;
+  all_questions_answered?: boolean;
+}
+
+export interface RemedialQuestionResponse {
+  remedial_id: string;
+  question: QuizQuestion;
+  difficulty: Difficulty;
+  progress: {
+    completed: number;
+    required: number;
+  };
+}
+
+export interface SubmitRemedialAnswerResponse {
+  is_correct: boolean;
+  explanation: string;
+  progress: {
+    completed: number;
+    required: number;
+  };
+  remedial_completed: boolean;
+  next_question?: QuizQuestion;
+}
+
+export interface QuizSummary {
+  attempt_id: string;
+  score: number;
+  total: number;
+  percentage: number;
+  wrong_questions: Array<{
+    question_id: string;
+    question_text: string;
+    your_answer: string;
+    correct_answer: string;
+    explanation: string;
+    recommended_difficulty: Difficulty;
+  }>;
+  remediation_required: boolean;
+  remedial_plan?: any;
+}
+
+export interface PracticeSession {
+  session_id: string;
+  questions: QuizQuestion[];
+  quiz_context_used: boolean;
+}
+
+export interface PracticeAnswerResponse {
+  is_correct: boolean;
+  explanation: string;
+  correct_answer?: string;
+  questions_completed: number;
+  total_correct: number;
+  next_question?: QuizQuestion;
+}

@@ -9,6 +9,8 @@ import {
   Play,
   BookOpen,
   Sparkles,
+  HelpCircle,
+  Trophy,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardTitle } from "@/components/ui/card"
@@ -18,6 +20,8 @@ import { type Chapter, type BackendChapter, apiClient } from "@/lib/api"
 import { useAuth } from "@/contexts/AuthContext"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { QuizInterface } from "@/components/quiz/QuizInterface"
+
 
 export default function LearningPath() {
   const { syllabusId } = useParams()
@@ -28,8 +32,15 @@ export default function LearningPath() {
   const { user } = useAuth()
   const { toast } = useToast()
 
-  const { syllabus, loading: syllabusLoading, error: syllabusError } = useSyllabus(syllabusId!)
+  const { syllabus, setSyllabus, loading: syllabusLoading, error: syllabusError } = useSyllabus(syllabusId!)
   const isTeacher = user?.role === "TEACHER"
+  const [isGenerating, setIsGenerating] = useState(false)
+
+  // Quiz State
+  const [activeQuizId, setActiveQuizId] = useState<string | null>(null)
+  const [isQuizOpen, setIsQuizOpen] = useState(false)
+  const [isTopicQuiz, setIsTopicQuiz] = useState(false)
+
 
   const shouldPollSyllabus =
     syllabus?.status === "GENERATING_STRUCTURE" || syllabus?.status === "CREATED"
@@ -110,6 +121,70 @@ export default function LearningPath() {
       })
     }
   }
+
+  const handleGenerateQuiz = async (subchapterId: string) => {
+    try {
+      setGeneratingChapters(prev => new Set(prev).add(subchapterId))
+      await apiClient.generateQuiz(subchapterId)
+      toast({
+        title: "Quiz Generated",
+        description: "A quiz has been created for this lesson.",
+      })
+      setTimeout(() => fetchChapters(), 1000)
+    } catch (error) {
+      toast({
+        title: "Generation Failed",
+        description: "Could not generate quiz",
+        variant: "destructive",
+      })
+    } finally {
+      setGeneratingChapters(prev => {
+        const next = new Set(prev)
+        next.delete(subchapterId)
+        return next
+      })
+    }
+  }
+
+  const handleStartQuiz = (subchapterId: string) => {
+    setActiveQuizId(subchapterId)
+    setIsQuizOpen(true)
+    setIsTopicQuiz(false)
+  }
+
+  const handleStartTopicQuiz = (topicId: string) => {
+    setActiveQuizId(topicId)
+    setIsQuizOpen(true)
+    setIsTopicQuiz(true)
+  }
+
+  const handleGenerateTopicContentAndQuiz = async (chapterId: string) => {
+    setIsGenerating(true)
+    try {
+      await apiClient.generateContent(chapterId)
+      await apiClient.generateTopicQuiz(chapterId)
+
+      // Update local state to show published and final quiz
+      setSyllabus(prev => {
+        if (!prev) return prev; // Should not happen if we are here
+        // Since we use the hook, we might not be able to setSyllabus directly if it comes from hook state?
+        // Actually useSyllabus returns `syllabus` which is state. But here we might rely on re-fetching.
+        // The fetchChapters() call in finally/timeout will handle it.
+        return prev
+      })
+
+      toast({ title: "Content Generated", description: "Chapter content and Final Quiz ready." })
+
+      // Refresh chapters
+      setTimeout(() => fetchChapters(), 1000)
+
+    } catch (e) {
+      toast({ title: "Error", description: "Failed to generate content", variant: "destructive" })
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
 
   if (syllabusLoading) {
     return <PageLoader text="Loading your path..." />
@@ -206,25 +281,43 @@ export default function LearningPath() {
                               No Content Yet
                             </Button>
                           ) : (
-                            <Button
-                              onClick={() => handleGenerateChapter(chapter.id)}
-                              disabled={isGenerating}
-                              className="w-full bg-eliza-blue hover:bg-eliza-blue/90 text-white font-semibold shadow-sm"
-                            >
-                              {isGenerating ? (
-                                <>
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Generating...
-                                </>
-                              ) : (
-                                <>
-                                  <Sparkles className="mr-2 h-4 w-4" />
-                                  Generate Content
-                                </>
-                              )}
-                            </Button>
+                            <div className="space-y-2">
+                              <Button
+                                onClick={() => handleGenerateTopicContentAndQuiz(chapter.id)}
+                                disabled={isGenerating}
+                                className="w-full bg-eliza-blue hover:bg-eliza-blue/90 text-white font-semibold shadow-sm"
+                              >
+                                {isGenerating ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Generating...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Sparkles className="mr-2 h-4 w-4" />
+                                    Generate Content
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           )
-                        ) : null
+                        ) : (
+                          // Content Exists
+                          <div className="space-y-2">
+                            {(chapter as any).has_final_quiz ? (
+                              <Button
+                                onClick={() => handleStartTopicQuiz(chapter.id)}
+                                className="w-full bg-eliza-purple hover:bg-eliza-purple/90 text-white font-bold shadow-md"
+                              >
+                                <Trophy className="mr-2 h-4 w-4" /> Final Assessment
+                              </Button>
+                            ) : (
+                              <Button variant="outline" disabled className="w-full">
+                                Final Quiz Not Ready
+                              </Button>
+                            )}
+                          </div>
+                        )
                       ) : (
                         <Button variant="outline" disabled className="w-full opacity-50 cursor-not-allowed">
                           Locked
@@ -314,7 +407,38 @@ export default function LearningPath() {
                                   )
                                 )}
                               </div>
+
+                              <div className="flex-shrink-0 ml-2">
+                                {sub.has_quiz ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                                    onClick={() => handleStartQuiz(sub.id)}
+                                  >
+                                    <HelpCircle className="h-3 w-3 mr-1" />
+                                    Quiz
+                                  </Button>
+                                ) : (
+                                  isTeacher && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 text-xs text-gray-400 hover:text-purple-600 hover:bg-purple-50"
+                                      disabled={isBlogGenerating}
+                                      onClick={() => handleGenerateQuiz(sub.id)}
+                                    >
+                                      {isBlogGenerating ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        "Add Quiz"
+                                      )}
+                                    </Button>
+                                  )
+                                )}
+                              </div>
                             </div>
+
                           )
                         })}
                       </div>
@@ -332,6 +456,16 @@ export default function LearningPath() {
           )}
         </div>
       </div>
+
+      {isQuizOpen && activeQuizId && (
+        <QuizInterface
+          quizId={activeQuizId}
+          onClose={() => {
+            setIsQuizOpen(false)
+            setActiveQuizId(null)
+          }}
+        />
+      )}
     </div>
   )
 }

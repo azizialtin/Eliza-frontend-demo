@@ -12,6 +12,19 @@ export { MANAGER_URL, CONTENT_URL, VIDEO_URL, RAG_URL, QUIZ_URL }
 
 // Import content section types
 import type { ContentSection, PersonalizedSectionRequest } from "@/types/content-sections"
+import {
+  QuizQuestion,
+  QuizAttempt,
+  QuizAttemptResponse,
+  QuizSummary,
+  AnswerResponse,
+  RemedialQuestionResponse,
+  SubmitRemedialAnswerResponse,
+  Difficulty,
+  PracticeSession,
+  PracticeAnswerResponse
+} from "../types/quiz"
+
 import albanianVideo from "../riemann-sum-albanian-FINAL.mp4"
 
 // Auth token management
@@ -292,6 +305,7 @@ export class ApiClient {
     this.loadMockState();
     this.loadMockStudents();
     this.loadMockContent();
+    this.loadMockQuiz();
   }
 
   private async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -460,6 +474,11 @@ export class ApiClient {
   private mockContentState = new Map<string, ContentSection[]>();
   private MOCK_CONTENT_KEY = "aula_mock_content_state";
 
+  // Mock Quiz State
+  // Key: attemptId, Value: QuizHistory
+  private mockQuizState = new Map<string, any>();
+  private MOCK_QUIZ_KEY = "aula_mock_quiz_state";
+
   private saveMockState() {
     if (typeof window === "undefined") return;
     try {
@@ -529,6 +548,30 @@ export class ApiClient {
       }
     } catch (e) {
       console.error("Failed to load mock content", e);
+    }
+  }
+
+  private saveMockQuiz() {
+    if (typeof window === "undefined") return;
+    try {
+      const obj = Object.fromEntries(this.mockQuizState);
+      localStorage.setItem(this.MOCK_QUIZ_KEY, JSON.stringify(obj));
+    } catch (e) {
+      console.error("Failed to save mock quiz", e);
+    }
+  }
+
+  private loadMockQuiz() {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem(this.MOCK_QUIZ_KEY);
+      if (stored) {
+        const obj = JSON.parse(stored);
+        this.mockQuizState = new Map(Object.entries(obj));
+        console.log("🧠 Loaded mock quiz state", this.mockQuizState);
+      }
+    } catch (e) {
+      console.error("Failed to load mock quiz", e);
     }
   }
 
@@ -1404,6 +1447,332 @@ Integration is the tool we use to move from the "instantaneous" world of rates (
     }
 
     return Promise.resolve({ success: true, message: "Quiz generated successfully (stateless fallback)" });
+  }
+
+  async generateTopicQuiz(topicId: string): Promise<any> {
+    console.log(`✨ Mock generate TOPIC quiz for topic ${topicId}`);
+
+    // Update state in mockSyllabusState
+    for (const [sId, topics] of this.mockSyllabusState.entries()) {
+      const topic = topics.find(t => t.id === topicId);
+      if (topic) {
+        // Add a mock property to topic if not present in type (we will just cast or assume it works for mock)
+        // Ideally types should be updated, but for mock we can be flexible or assume UI handles it
+        (topic as any).has_final_quiz = true;
+        this.saveMockState();
+        return Promise.resolve({ success: true, message: "Topic Quiz generated successfully" });
+      }
+    }
+    return Promise.resolve({ success: true, message: "Topic Quiz generated successfully (stateless fallback)" });
+  }
+
+  // Practice Session Methods
+  async startPracticeSession(chapterId: string, difficulty: Difficulty): Promise<PracticeSession> {
+    console.log(`🎯 Starting practice session for ${chapterId} with difficulty ${difficulty}`);
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Generate 5 random questions based on difficulty
+    const questions: QuizQuestion[] = Array.from({ length: 5 }).map((_, i) => ({
+      id: `prac-q-${Date.now()}-${i}`,
+      subchapter_id: chapterId,
+      source_type: "ai_generated",
+      question_type: "multiple_choice",
+      difficulty: difficulty,
+      status: "published",
+      body: `[Practice ${difficulty}] Question ${i + 1}: Solve for x in the equation...`,
+      answer_explanation: "This is a practice explanation.",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      source_chunk_ids: [],
+      additional_metadata: {},
+      options: [
+        { id: "p1", label: "A", text: "Option A", is_correct: false, question_id: `prac-q-${Date.now()}-${i}` },
+        { id: "p2", label: "B", text: "Option B", is_correct: true, question_id: `prac-q-${Date.now()}-${i}` },
+        { id: "p3", label: "C", text: "Option C", is_correct: false, question_id: `prac-q-${Date.now()}-${i}` },
+        { id: "p4", label: "D", text: "Option D", is_correct: false, question_id: `prac-q-${Date.now()}-${i}` }
+      ]
+    }));
+
+    const sessionId = `prac-session-${Date.now()}`;
+    const sessionState = {
+      id: sessionId,
+      chapter_id: chapterId,
+      questions: questions,
+      answers: {},
+      correct_count: 0
+    };
+
+    // Store session state in a new map if not exists
+    if (!this.mockQuizState.has("practice_sessions")) {
+      this.mockQuizState.set("practice_sessions", new Map());
+    }
+    const sessions = this.mockQuizState.get("practice_sessions") as Map<string, any>;
+    sessions.set(sessionId, sessionState);
+    this.saveMockQuiz();
+
+    return {
+      session_id: sessionId,
+      questions: questions,
+      quiz_context_used: false
+    };
+  }
+
+  async submitPracticeAnswer(sessionId: string, questionId: string, answer: string): Promise<PracticeAnswerResponse> {
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const sessions = this.mockQuizState.get("practice_sessions") as Map<string, any>;
+    const session = sessions?.get(sessionId);
+
+    if (!session) throw new Error("Session not found");
+
+    const question = session.questions.find((q: QuizQuestion) => q.id === questionId);
+    const isCorrect = question.options?.find((o: any) => o.id === answer)?.is_correct || false;
+
+    session.answers[questionId] = { answer, isCorrect };
+    if (isCorrect) session.correct_count++;
+
+    this.saveMockQuiz();
+
+    return {
+      is_correct: isCorrect,
+      explanation: isCorrect ? "Correct! Well done." : "Incorrect. Try to review the concept.",
+      correct_answer: question.options?.find((o: any) => o.is_correct)?.id,
+      questions_completed: Object.keys(session.answers).length,
+      total_correct: session.correct_count,
+      // For demo, if all done, explain it
+      next_question: Object.keys(session.answers).length < session.questions.length ? session.questions[Object.keys(session.answers).length] : undefined
+    };
+  }
+
+  // --- Mock Quiz Service ---
+
+  async startQuiz(quizId: string): Promise<any> {
+    console.log(`🚀 Starting quiz ${quizId}`);
+
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Hardcoded questions for demo
+    const questions: QuizQuestion[] = [
+      {
+        id: "q1",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "easy",
+        status: "published",
+        body: "What is the primary goal of the 'Power Rule' in integration?",
+        answer_explanation: "The Power Rule is used to find the antiderivative of a function of the form x^n, by adding 1 to the exponent and dividing by the new exponent.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt1", question_id: "q1", label: "A", text: "To find the derivative", is_correct: false },
+          { id: "opt2", question_id: "q1", label: "B", text: "To find the area of a circle", is_correct: false },
+          { id: "opt3", question_id: "q1", label: "C", text: "To reverse the power rule of differentiation", is_correct: true },
+          { id: "opt4", question_id: "q1", label: "D", text: "To calculate slope", is_correct: false }
+        ]
+      },
+      {
+        id: "q2",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "standard" as Difficulty,
+        status: "published",
+        body: "If f'(x) = 2x, what is f(x)?",
+        answer_explanation: "The antiderivative of 2x is x^2 + C, because the derivative of x^2 is 2x.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt1", question_id: "q2", label: "A", text: "x^2 + C", is_correct: true },
+          { id: "opt2", question_id: "q2", label: "B", text: "2", is_correct: false },
+          { id: "opt3", question_id: "q2", label: "C", text: "x^2", is_correct: false }, // Tricky distractor
+          { id: "opt4", question_id: "q2", label: "D", text: "x + C", is_correct: false }
+        ]
+      },
+      {
+        id: "q3",
+        subchapter_id: "demo",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: "hard",
+        status: "published",
+        body: "What does the 'C' represent in an indefinite integral?",
+        answer_explanation: "The constant of integration 'C' represents any constant value that disappears during differentiation, meaning there are infinite possible antiderivatives.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        source_chunk_ids: [],
+        additional_metadata: {},
+        options: [
+          { id: "opt1", question_id: "q3", label: "A", text: "Circumference", is_correct: false },
+          { id: "opt2", question_id: "q3", label: "B", text: "Constant of Integration", is_correct: true },
+          { id: "opt3", question_id: "q3", label: "C", text: "Calculus", is_correct: false },
+          { id: "opt4", question_id: "q3", label: "D", text: "Continuous", is_correct: false }
+        ]
+      }
+    ];
+
+    const attemptId = `attempt-${Date.now()}`;
+    const attemptState = {
+      id: attemptId,
+      quiz_id: quizId,
+      questions: questions,
+      answers: {}, // map questionId -> optionId
+      current_index: 0,
+      score: 0,
+      status: "IN_PROGRESS",
+      started_at: new Date().toISOString()
+    };
+
+    this.mockQuizState.set(attemptId, attemptState);
+    this.saveMockQuiz();
+
+    return {
+      attempt_id: attemptId,
+      total_questions: questions.length,
+      current_index: 0,
+      question: questions[0]
+    };
+  }
+
+  async getCurrentQuestion(attemptId: string): Promise<any> {
+    const state = this.mockQuizState.get(attemptId);
+    if (!state) throw new Error("Attempt not found");
+
+    if (state.current_index >= state.questions.length) {
+      return { question: null, question_index: state.current_index, total_questions: state.questions.length };
+    }
+
+    return {
+      question: state.questions[state.current_index],
+      question_index: state.current_index,
+      total_questions: state.questions.length
+    };
+  }
+
+  async answerQuestion(attemptId: string, questionId: string, answer: string): Promise<any> {
+    console.log(`📝 Answering question ${questionId} for attempt ${attemptId}`);
+    // Simulate delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const state = this.mockQuizState.get(attemptId);
+    if (!state) throw new Error("Attempt not found");
+
+    const question = state.questions.find((q: QuizQuestion) => q.id === questionId);
+    if (!question) throw new Error("Question not found");
+
+    const selectedOption = question.options?.find((o: any) => o.id === answer);
+    const isCorrect = selectedOption?.is_correct || false;
+
+    // Record answer
+    state.answers[questionId] = {
+      answer_id: answer,
+      is_correct: isCorrect
+    };
+
+    // Move to next
+    state.current_index += 1;
+    if (state.current_index >= state.questions.length) {
+      state.status = "COMPLETED";
+    }
+
+    this.saveMockQuiz();
+
+    // Prepare response
+    const nextQ = state.current_index < state.questions.length ? state.questions[state.current_index] : null;
+
+    return {
+      is_correct: isCorrect,
+      explanation: isCorrect ? "Correct! " + question.answer_explanation : "Incorrect. " + question.answer_explanation,
+      correct_answer: question.options?.find((o: any) => o.is_correct)?.id,
+      next_question: nextQ,
+      all_questions_answered: state.current_index >= state.questions.length
+    };
+  }
+
+  async getQuizSummary(attemptId: string): Promise<QuizSummary> {
+    const state = this.mockQuizState.get(attemptId);
+    if (!state) throw new Error("Attempt not found");
+
+    let correctCount = 0;
+    const wrongQuestions: any[] = [];
+
+    state.questions.forEach((q: QuizQuestion) => {
+      const ans = state.answers[q.id];
+      if (ans && ans.is_correct) {
+        correctCount++;
+      } else {
+        wrongQuestions.push({
+          question_id: q.id,
+          question_text: q.body,
+          your_answer: q.options?.find((o: any) => o.id === ans?.answer_id)?.text || "No Answer",
+          correct_answer: q.options?.find((o: any) => o.is_correct)?.text || "Unknown",
+          explanation: q.answer_explanation,
+          recommended_difficulty: "medium"
+        });
+      }
+    });
+
+    const percentage = Math.round((correctCount / state.questions.length) * 100);
+
+    return {
+      attempt_id: attemptId,
+      score: correctCount,
+      total: state.questions.length,
+      percentage: percentage,
+      wrong_questions: wrongQuestions,
+      remediation_required: wrongQuestions.length > 0
+    };
+  }
+
+  async chooseRemedialDifficulty(attemptId: string, questionId: string, difficulty: Difficulty): Promise<any> {
+    // Generate a mock remedial question
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    return {
+      remedial_id: `rem-${Date.now()}`,
+      difficulty: difficulty,
+      progress: { completed: 0, required: 2 },
+      question: {
+        id: `rem-q-${Date.now()}`,
+        subchapter_id: "remedial",
+        source_type: "ai_generated",
+        question_type: "multiple_choice",
+        difficulty: difficulty,
+        status: "published",
+        body: `[Remedial ${difficulty}] A similar question to master the concept: What creates the area under the curve?`,
+        answer_explanation: "Integration sums up infinite infinitesimals to create the area.",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        options: [
+          { id: "r1", label: "A", text: "Differentiation", is_correct: false },
+          { id: "r2", label: "B", text: "Integration", is_correct: true },
+          { id: "r3", label: "C", text: "Limits", is_correct: false },
+          { id: "r4", label: "D", text: "Algebra", is_correct: false }
+        ]
+      }
+    };
+  }
+
+  async submitRemedialAnswer(remedialId: string, answer: string): Promise<any> {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const isCorrect = answer === "r2"; // Hardcoded correct answer for demo
+
+    return {
+      is_correct: isCorrect,
+      explanation: isCorrect ? "Excellent! You got it." : "Not quite. Integration is the 'summing' process.",
+      progress: {
+        completed: isCorrect ? 1 : 0, // Mock progress
+        required: 2
+      },
+      // For demo, just finish after one correct or just show completion
+      remedial_completed: isCorrect, // Simplification for demo
+      next_question: null // No next question for this simple demo
+    };
   }
 
   async openChapter(chapterId: string, autoGenerateVideos = true): Promise<any> {
